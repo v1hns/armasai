@@ -7,6 +7,6 @@ constraints, a reasoning agent proposes arm parameters, a MuJoCo verifier grades
 on real ADL tasks, an RL loop (GRPO) trains the designer on that feedback, and the winning
 design is exported as a printable STL.
 
-➡️ **The full, canonical PRD lives in [`docs/PRD.md`](docs/PRD.md).**
+The full, canonical PRD lives in [`docs/PRD.md`](docs/PRD.md).
 
-For team ownership and the hour-by-hour timeline, see [`WORK_SPLIT.md`](WORK_SPLIT.md).
+Implementation ownership, milestones, and task split live only in [`WORK_SPLIT.md`](WORK_SPLIT.md).

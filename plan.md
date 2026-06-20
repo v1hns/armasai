@@ -1,4 +1,6 @@
-# Egocentric-to-Assistive-Limb Pipeline (working name)
+# Prosthesis-RL Pipeline Notes
+
+This is an exploratory technical note for the product direction. Ownership and implementation tasks live only in [WORK_SPLIT.md](WORK_SPLIT.md).
 
 ## Pitch
 
@@ -42,14 +44,14 @@ From a 5s Meta-glasses clip, auto-generate a custom assistive limb (CAD + articu
 - **Reward / task spec for the `.pt` is undefined.** "Help the person" needs a concrete task, an observation space (does the policy see user intent? gaze? scene state? EMG?), and a reward.
 - **SLAM reconstruction quality as collision geometry.** A 5s monocular+IMU reconstruction is sparse. Decide whether it is true collision geometry or a visual backdrop with hand-placed collision primitives.
 
-## MVP slice (what to actually demo)
+## Demo Slice
 
 - Fix one morphology: supernumerary arm (easiest place to justify +1 DoF).
 - Abstract painpoint reasoning to one task (e.g. "stabilize an object near the chest" or "reach a shelf").
 - Parametric MJCF generator + the validation gate.
 - SLAM as visual backdrop + a few placed collision primitives, attachment pose from gaze + IMU.
 - Train one RL policy in MuJoCo, export `.pt`.
-- That is a believable end-to-end vertical slice. Everything else is depth added later.
+- This is a believable end-to-end vertical slice. Everything else is depth added later.
 
 ## Scope boundary
 

@@ -1,22 +1,40 @@
 # Prosthesis-RL
 
-RL-driven prosthesis design loop for generating, simulating, and improving personalized arm designs from ADL task observations.
+RL-driven prosthesis design loop for generating, simulating, evaluating, and improving personalized arm designs from Activities of Daily Living (ADL) observations.
 
-This README is the working ownership map for the sprint. It is a companion to the PRD: each person owns a vertical slice, and the shared contracts between slices are the only interfaces everyone must agree on.
+Prosthesis-RL turns a short patient video into a structured problem statement, proposes a prosthetic-arm design, verifies that design in simulation, improves future designs from the verifier's feedback, and exports the winning design as a printable CAD/STL artifact.
 
-**Lock the shared contracts by Saturday 2 PM.**
+For the detailed product spec, see [docs/PRD.md](docs/PRD.md). For team responsibilities, milestones, and task ownership, see [WORK_SPLIT.md](WORK_SPLIT.md).
+
+## System Loop
+
+```text
+patient video
+    |
+    v
+Perceive -> Design -> Verify -> Optimize
+              |          ^
+              v          |
+          Manufacture    |
+```
+
+- **Perceive:** extract patient constraints, target ADL tasks, and relevant context into a validated `ProblemSpec`.
+- **Design:** use AI reasoning to propose prosthesis parameters as `DesignParams`.
+- **Verify:** simulate the design against ADL tasks and produce a deterministic reward.
+- **Optimize:** improve design proposals from empirical verifier feedback.
+- **Manufacture:** convert the winning design into a CAD/STL output.
 
 ## Core Interfaces
 
-The system is split into three stages connected by strict contracts:
+The project is organized around three contracts:
 
 ```ts
 type ProblemSpec = {
-  tasks: unknown[];
+  tasks: string[];
   constraints: {
     rom: unknown;
-    residual_strength: unknown;
-    grip_capacity: unknown;
+    residual_strength: number;
+    grip_capacity: number;
   };
 };
 
@@ -32,143 +50,37 @@ type Reward = number;
 ```
 
 - `ProblemSpec`: emitted by perception and consumed by the design agent.
-- `DesignParams`: emitted by the design agent and consumed by CAD + simulation.
-- `Reward`: a single deterministic scalar per episode, computed by the verifier.
+- `DesignParams`: emitted by the design agent and consumed by CAD, simulation, and evaluation.
+- `Reward`: a deterministic scalar score from the verifier.
 
-## File Outline
+## Repository Outline
 
 ```text
 .
 ├── README.md
-├── pyproject.toml
-├── tasks.py                         # HUD eval entrypoint
-├── prosthesis_rl/
-│   ├── agents/
-│   │   ├── orchestrator.py          # End-to-end loop owner
-│   │   ├── perception.py            # Clip -> ProblemSpec
-│   │   └── design.py                # ProblemSpec -> DesignParams
-│   ├── contracts/
-│   │   └── schemas.py               # ProblemSpec, DesignParams, Reward contracts
-│   ├── cv/
-│   │   └── backend.py               # Frame extraction + VLM backend placeholder
-│   ├── cad/
-│   │   └── bridge.py                # DesignParams -> STL bridge
-│   ├── sim/
-│   │   ├── mujoco_env.py            # Parametric ADL sim placeholder
-│   │   └── verifier.py              # Deterministic reward computation
-│   ├── rl/
-│   │   ├── controller.py            # Scripted IK first pass
-│   │   ├── rewards.py               # Reward shaping helpers
-│   │   └── train.py                 # GRPO training stub
-│   ├── hud/
-│   │   └── gateway.py               # HUD-facing eval gateway
-│   └── config/
-│       └── defaults.py
-├── scripts/
-│   └── run_loop.py                  # Local smoke run
-├── tests/
-│   └── test_smoke_loop.py
-├── examples/
-│   └── adl/
-└── assets/
-    ├── clips/
-    └── stl/
+├── PRD.md
+├── WORK_SPLIT.md
+├── docs/
+│   └── PRD.md
+├── adl/
+│   └── README.md
+└── viewer/
+    ├── server.js
+    ├── src/
+    └── package.json
 ```
 
-## Ownership
+## Local Viewer
 
-### Vihaan + Benji: Agent Architecture + API Infra
+```bash
+cd viewer
+cp .env.example .env
+# add ANTHROPIC_API_KEY to .env
+npm run dev
+```
 
-Own the orchestration loop across all three stages, plus HUD integration.
+Then open [http://localhost:5173](http://localhost:5173).
 
-If the loop does not close, nothing else matters. The goal is to get a dumb end-to-end loop running by Saturday night with every component stubbed, then let Nathan and Vasi swap in real pieces.
+## Scope
 
-#### Deliverables
-
-- Perception agent: clip -> VLM using Claude vision -> validated `ProblemSpec` JSON.
-- Design agent scaffold: consumes `ProblemSpec` plus last sim feedback, emits `DesignParams` plus control hints.
-- Action/observation interface for Vasi's policy.
-- HUD task registry in `tasks.py`: register ADL tasks, wire the gateway, and make `hud eval tasks.py claude` run end to end.
-- CAD bridge: `DesignParams` -> CadQuery/OpenSCAD -> STL, executed inside the Daytona sandbox.
-
-#### Credits
-
-- HUD: environment and eval API.
-- Anthropic: Claude vision and reasoning.
-- Modal: inference serving if needed.
-
-#### Milestone
-
-`hud eval tasks.py claude` returns a real number by dinner Saturday.
-
-### Nathan: CV + Physics Sim
-
-Own the verifier.
-
-The sim is the heart of the project. It should be faithful enough that a design winning in the environment would plausibly work on a real arm.
-
-#### Deliverables
-
-- CV/perception backend: frame extraction -> VLM call -> pain-point detection.
-- Produce the `ProblemSpec` consumed by the agent.
-- Run CV on Modal if heavy.
-- MuJoCo environment and grading:
-  - Parametric arm model with XML generated from `DesignParams`.
-  - ADL task scenes.
-  - Grading functions for reach success, grasp force window, energy, ROM violation, and self-collision.
-- Deterministic, fast verifier suitable for thousands of calls.
-- Stretch: promote one task into Antim Worldsim/Newton for a fidelity story.
-
-#### Credits
-
-- Modal: $250 GPU budget for CV.
-- Antim Labs: Worldsim and physical validation.
-- OpenAI: vision backup if Claude bottlenecks.
-
-#### Milestone
-
-Reach task `1.1` plus grading callable by the design agent by dinner Saturday.
-
-### Vasi: RL + Optimization
-
-Own training the design agent and shaping the reward.
-
-The goal is to make the designer learn from the verifier instead of guessing.
-
-#### Deliverables
-
-- Inner controller: scripted/IK controller first, so reward reflects design quality rather than control noise.
-- Upgrade to a learned policy only if time allows.
-- Reward shaping:
-  - success
-  - minus energy
-  - minus ROM violation
-  - minus collision
-- Weight rewards per tier from PRD section 7.
-- Tune so every task lands at 20-50% mean reward with real variance.
-- GRPO loop using Fireworks/HUD:
-  - Roll out the design agent roughly 10 times per task.
-  - Train on trajectories where good designs received reward.
-
-#### Credits
-
-- Fireworks AI: $30 RL training.
-- HUD: platform training and evals.
-- Google DeepMind: only if GCP is needed for a bigger run.
-
-#### Milestone
-
-First training run kicked off by 8 AM Sunday. This is a hard deadline.
-
-## Timeline
-
-| Window | Vihaan + Benji | Nathan | Vasi |
-| --- | --- | --- | --- |
-| Sat 12:30-7 PM | Schema, agent scaffold, `tasks.py`, CAD bridge | Arm XML, Reach task, grading | Scripted IK, reward v1 |
-| Sat 7 PM-Sun 8 AM | Real CV -> real `ProblemSpec`; one personalized task live | Add grasp + feeding, tune to 20-50% | GRPO config; kick off run by 8 AM |
-| Sun 8 AM-1 PM | Loop video; converge | STL export; LeRobot demo | Pick top design; final eval |
-
-## Submission
-
-- Sunday 1 PM: submission deadline.
-- Sunday 2:30 PM: top-10 presentation.
+This is a research and demo system, not a medical device. Any real prosthetic or assistive-limb deployment would require biomechanical safety review, clinical validation, and regulatory approval.

@@ -1,64 +1,89 @@
-# Prosthesis-RL — Work Split & Ownership
+# Prosthesis-RL — Work Split
 
-Companion to the PRD. Each person owns a vertical slice; the contracts between slices (`ProblemSpec`, `DesignParams`, reward scalar) are the only things everyone must agree on. Lock those by Saturday 2 PM.
+This is the single source of truth for ownership, task split, milestones, and timeline. The README and PRD describe the project; this file describes who owns what.
 
----
+Shared contracts are the coordination boundary:
 
-## VIHAAN + BENJI — Agent architecture + API infra (own the loop)
+- `ProblemSpec`: task list plus patient constraints.
+- `DesignParams`: candidate prosthesis geometry and control parameters.
+- `Reward`: deterministic scalar score from the verifier.
 
-You build the orchestration connecting all three stages, plus the HUD integration. If the loop doesn't close, nothing else matters — so your job is to get a **dumb end-to-end loop running by Saturday night with every component stubbed**, then let Nathan and Vasi swap in real pieces.
+## Benji — CAD, AI Design Reasoning, Spatial Evaluation
 
-**Deliverables**
-- **Perception agent:** clip → VLM (Claude vision) → `ProblemSpec` JSON. Strict schema, validated output.
-- **Design agent scaffold:** takes `ProblemSpec` + last sim feedback → emits `DesignParams` + control hints. You build the action/observation interface; Vasi trains the policy inside it.
-- **HUD task registry (`tasks.py`):** register the ADL tasks, wire the gateway, make `hud eval tasks.py claude` run end to end.
-- **CAD bridge:** `DesignParams` → CadQuery/OpenSCAD → STL, executed inside the Daytona sandbox.
+Benji owns the design-quality side of the loop: how the system reasons about prosthesis geometry, turns design parameters into manufacturable artifacts, and empirically decides whether one design is better than another.
 
-**Credits:** HUD (env + eval API), Anthropic (Claude vision + reasoning), Modal (if serving inference).
-**Milestone:** `hud eval tasks.py claude` returns a real number by dinner Saturday.
+### Tasks
 
----
+- **CAD generation pipeline:** convert `DesignParams` into parametric CAD geometry through OpenSCAD/CadQuery and export STL artifacts.
+- **Daytona CAD execution:** run CAD generation in the Daytona sandbox and keep generated outputs reproducible.
+- **AI design models and reasoning:** build the design-agent logic that turns `ProblemSpec` plus sim feedback into candidate prosthesis parameters.
+- **Spatial reasoning:** reason about workspace coverage, reachability, attachment geometry, joint limits, and collision-aware constraints.
+- **Empirical evaluation:** define and inspect eval runs, compare candidate designs, track reward distributions, and diagnose design failure modes.
+- **Design validation gates:** reject invalid geometry, impossible reach envelopes, unsafe joint limits, self-collisions, or non-manufacturable outputs.
+- **Final design evidence:** produce the top-design STL, evaluation summary, and reasoning trace explaining why the selected design wins.
 
-## NATHAN — CV + physics sim (the verifier)
+### Milestone
 
-Two halves. The sim is the heart of the whole project — make it faithful enough that a design winning in your env would plausibly work on a real arm.
+A generated design can be exported as STL, evaluated against verifier feedback, and justified with empirical evidence.
 
-**Deliverables**
-- **CV/perception backend:** frame extraction → VLM call → pain-point detection. Run on Modal if heavy. Produces the `ProblemSpec` that the agent consumes.
-- **MuJoCo environment + grading:** parametric arm model (XML generated from `DesignParams`), ADL task scenes, and grading functions — reach success, grasp force window, energy, ROM violation, self-collision. Must be **deterministic and fast** (called thousands of times).
-- **Stretch:** promote one task into Antim Worldsim/Newton for a fidelity story.
+## Vihaan — Orchestration, APIs, Perception, Loop Execution
 
-**Credits:** Modal ($250 GPU for CV), Antim Labs (Worldsim + physical validation), OpenAI (vision backup if Claude bottlenecks).
-**Milestone:** Reach task (1.1) + grading callable by the design agent by dinner Saturday.
+Vihaan owns the system plumbing that makes the project run end to end: the interfaces, APIs, task registry, perception intake, and executable demo flow.
 
----
+### Tasks
 
-## VASI — RL + optimization (make the designer smart)
+- **Orchestration and API infrastructure:** wire together perceive -> design -> verify -> optimize -> manufacture.
+- **HUD integration:** maintain `tasks.py`, the eval gateway, and the path that makes `hud eval tasks.py claude` return a real score.
+- **Perception and task intake:** convert video or clip input into structured `ProblemSpec` data with schema validation.
+- **Shared contracts:** maintain `ProblemSpec`, `DesignParams`, and `Reward` schemas so every component speaks the same language.
+- **Loop execution:** close a stubbed end-to-end loop first, then replace stubs with real CAD, sim, and RL components.
+- **Demo flow:** keep the system runnable and presentable from input clip through final output.
 
-You train the design agent and shape the reward. You're the one making the designer learn from the verifier instead of guessing.
+### Milestone
 
-**Deliverables**
-- **Inner controller:** scripted/IK controller first, so reward reflects *design quality* not control noise. Upgrade to a learned policy only if time allows.
-- **Reward shaping:** success − energy − ROM-violation − collision, weighted per tier (see PRD §7). Tune so every task lands at **20–50% mean reward with real variance**.
-- **GRPO loop (Fireworks/HUD):** roll out the design agent ~10×/task, train on trajectories where good designs got rewarded.
+The end-to-end loop runs from input to score with stable contracts and replaceable components.
 
-**Credits:** Fireworks AI ($30 RL training), HUD (platform training + evals), Google DeepMind (only if you need GCP for a bigger run).
-**Milestone:** First training run kicked off by **8 AM Sunday** — hard deadline.
+## Nathan — Physics Verifier and Task Realism
 
----
+Nathan owns the verifier: the simulation world that decides whether a proposed design actually works on ADL tasks.
 
-## Shared contracts (lock by Sat 2 PM)
+### Tasks
 
-- `ProblemSpec` = `{ tasks: [...], constraints: { rom, residual_strength, grip_capacity } }`
-- `DesignParams` = `{ upper_arm_len, forearm_len, joint_stiffness, grip_width, joint_limits }`
-- Reward = single deterministic scalar per episode, computed in Nathan's verifier.
+- **MuJoCo verifier:** build the parametric arm model, ADL scenes, and grading functions.
+- **Physics and task realism:** cover reach, grasp, and feeding scenes with force windows, energy, ROM, and collision measurements.
+- **Fast deterministic scoring:** make the same inputs produce the same reward and keep each verifier call cheap enough for repeated evaluation.
+- **Fidelity stretch:** promote one task into Antim Worldsim/Newton if time allows.
 
-## Timeline at a glance
+### Milestone
 
-| Window | V+B | Nathan | Vasi |
-|--------|-----|--------|------|
-| Sat 12:30–7 PM | Schema + agent scaffold + `tasks.py` + CAD bridge | Arm XML + Reach task + grading | Scripted IK + reward v1 |
-| Sat 7 PM–Sun 8 AM | Real CV → real `ProblemSpec`; 1 personalized task live | Add grasp + feeding, tune 20–50% | GRPO config; **kick off run by 8 AM** |
-| Sun 8 AM–1 PM | Loop video; converge | STL export; LeRobot demo | Pick top design; final eval |
+The verifier can score candidate `DesignParams` deterministically on at least the first ADL task.
 
-**Sun 1 PM submission · 2:30 PM top-10 pres.**
+## Vasi — RL and Reward Optimization
+
+Vasi owns the training layer that turns verifier feedback into better future designs.
+
+### Tasks
+
+- **GRPO training loop:** train the design agent using verifier rewards.
+- **Controller:** ship scripted/IK control first so reward reflects design quality; attempt learned control only if time allows.
+- **Reward shaping:** combine success, energy, ROM violation, and collision penalties into a useful scalar reward.
+- **Calibration:** tune tasks toward useful reward variance, ideally 20-50% mean reward rather than all-pass or all-fail.
+
+### Milestone
+
+The first optimization run produces measurable changes in design quality or reward distribution.
+
+## Shared Timeline
+
+| Window | Benji | Vihaan | Nathan | Vasi |
+| --- | --- | --- | --- | --- |
+| Sat 12:30-7 PM | CAD bridge, design reasoning scaffold, validation gates | Schemas, orchestration scaffold, `tasks.py`, HUD gateway | Arm XML, reach task, grading | Scripted IK, reward v1 |
+| Sat 7 PM-Sun 8 AM | Spatial checks, STL path, first empirical comparisons | Real intake to `ProblemSpec`, one personalized task live | Grasp/feed scenes, tune verifier variance | GRPO config, kickoff prep |
+| Sun 8 AM-1 PM | Top design STL, eval summary, reasoning trace | Demo flow, loop video, integration cleanup | Final scoring and sim evidence | Pick training result, final eval |
+
+## Hard Checkpoints
+
+- Shared contracts locked before parallel work diverges.
+- `hud eval tasks.py claude` returns a real number.
+- At least one design flows through CAD, verifier scoring, and final evidence.
+- Submission-ready demo and artifacts are ready by the final deadline.
