@@ -1,3 +1,8 @@
+# Node / viewer
+node_modules/
+viewer/dist/
+viewer/.env
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
