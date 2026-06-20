@@ -1,0 +1,20 @@
+[project]
+name = "prosthesis-rl"
+version = "0.1.0"
+description = "RL-driven prosthesis design loop for ADL task personalization."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+cad = [
+  "cadquery>=2.4",
+]
+sim = [
+  "mujoco>=3.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
