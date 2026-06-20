@@ -124,35 +124,54 @@ stood up first with every component stubbed, then real pieces are swapped in.
 These three contracts are the **only things every slice must agree on**. They decouple the
 slices so they can develop in parallel.
 
+**Single source of truth:** these are implemented as Pydantic models in
+`prosthesis_rl/contracts.py`. Every slice imports from there — nobody redefines the shapes
+locally. Changing a contract = a ping to the whole team, never a silent edit.
+
 ### `ProblemSpec`  — output of Perceive, input to Design
-```json
+```jsonc
 {
-  "tasks": ["reach", "grasp", "feeding"],
+  "tasks": ["reach", "grasp", "feeding"],   // non-empty; each ∈ the task-registry IDs in tasks.py
   "constraints": {
-    "rom": "...",                 // patient range-of-motion limits
-    "residual_strength": "...",   // residual limb strength
-    "grip_capacity": "..."        // achievable grip
+    // patient range-of-motion, per joint, in DEGREES, as [min, max]
+    "rom": {
+      "shoulder_flexion": [0.0, 120.0],     // deg; 0 = arm down, +flexion forward/up
+      "elbow_flexion":    [0.0, 145.0],     // deg
+      "wrist_rotation":   [-80.0, 80.0]     // deg; signed pronation(−)/supination(+)
+    },
+    "residual_strength": 30.0,              // float ≥ 0, NEWTONS — sustained force at residual limb
+    "grip_capacity":     15.0               // float ≥ 0, NEWTONS — target grip force the design must deliver
   }
 }
 ```
+- `tasks`: validated against the registry — unknown task ID → reject.
+- `rom` keys: the three joints above are the v1 set; absent joint ⇒ unconstrained.
+- Units are **degrees** here (human/CV-facing); the sim consumes **radians** (see below) —
+  conversion happens at the Design→Verify boundary, not in the contract.
 
 ### `DesignParams`  — output of Design, input to Verify & Manufacture
-```json
+```jsonc
 {
-  "upper_arm_len": 0.0,
-  "forearm_len": 0.0,
-  "joint_stiffness": 0.0,
-  "grip_width": 0.0,
-  "joint_limits": { "...": "..." }
+  "upper_arm_len":   0.30,   // float, METERS, range [0.20, 0.40]
+  "forearm_len":     0.25,   // float, METERS, range [0.20, 0.35]
+  "joint_stiffness": 10.0,   // float, N·m/rad, range [0.0, 50.0] — applied to all actuated joints
+  "grip_width":      0.08,   // float, METERS, max gripper opening, range [0.0, 0.15]
+  // per-joint hard limits in RADIANS (MuJoCo convention), as [min, max]
+  "joint_limits": {
+    "shoulder_flexion": [0.0, 2.094],   // rad
+    "elbow_flexion":    [0.0, 2.531],   // rad
+    "wrist_rotation":   [-1.396, 1.396] // rad
+  }
 }
 ```
+- All numeric fields are floats; out-of-range ⇒ reject (the validator clamps nothing silently).
+- `joint_limits` must be a subset of the patient `rom` (after deg→rad conversion) — the design
+  cannot demand more motion than the patient has.
 
 ### `Reward`  — output of Verify, training signal for Optimize
-- A **single deterministic scalar per episode**, computed inside Nathan's verifier.
-- Same inputs → same reward, every time (reproducibility is a hard requirement).
-
-> Exact units, ranges, and field types are TBD and must be pinned down when the contracts
-> are locked (see Open Questions).
+- A **single deterministic `float` per episode**, computed inside Nathan's verifier.
+- **Range: `[-1.0, 1.0]`**, clipped. Higher is better. Same inputs → same reward, every time.
+- Composed from the grading terms in §8; the scalar is the only thing the RL loop sees.
 
 ---
 
@@ -196,18 +215,24 @@ slices so they can develop in parallel.
 The verifier composes the per-episode reward scalar from the grading functions:
 
 ```
-reward = success − energy − ROM_violation − collision    (weighted per task tier)
+reward = clip( w_s·success − w_e·energy − w_r·ROM_violation − w_c·collision, −1.0, 1.0 )
 ```
 
-- **success** — task completed (reach reached, grasp held within force window, feeding
-  motion achieved).
-- **energy** — penalize energy expended (efficiency).
-- **ROM_violation** — penalize exceeding the patient's range-of-motion constraints.
-- **collision** — penalize self-collision.
+Each term, its type/range, and the **default v1 weights** (the team's starting point — tune
+per tier from here):
 
-Weights are tuned **per tier** so each task sits in the 20–50% mean-reward band with
-genuine variance (not all-pass or all-fail). Exact per-tier weights are TBD (see Open
-Questions).
+| Term | Type / range | Meaning | Default weight |
+|------|--------------|---------|----------------|
+| **success** | `float ∈ [0, 1]` | fraction of task goal met (reach reached, grasp held within force window, feeding motion achieved) | `w_s = 1.0` |
+| **energy** | `float ≥ 0`, normalized | actuator energy expended over the episode, ÷ a per-task budget so it lands ~[0,1] | `w_e = 0.2` |
+| **ROM_violation** | `float ≥ 0` | total radians past the patient's `rom` limits, summed over joints×timesteps | `w_r = 0.5` |
+| **collision** | `float ≥ 0` | self-collision penetration depth (m) summed over contacts, or contact-count if cheaper | `w_c = 0.3` |
+
+- All penalty terms are **≥ 0** and **subtracted** — only `success` adds.
+- Final reward is **clipped to `[-1, 1]`** to match the contract.
+- Weights are tuned **per tier** so each task sits in the **20–50% mean-reward band** with
+  genuine variance (not all-pass or all-fail). The table above is the v1 default; per-tier
+  overrides live in the task registry.
 
 ---
 
