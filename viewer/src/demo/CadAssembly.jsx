@@ -1,19 +1,8 @@
 import { Suspense, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Grid, Environment, PerspectiveCamera, Html, Bounds } from '@react-three/drei'
+import { OrbitControls, Grid, Environment, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { CAD_PARTS } from './demoData.js'
-
-// Invisible box spanning the full arm so <Bounds> always frames the same volume
-// (centered on the origin) regardless of how many parts are revealed.
-function FrameProxy({ width, height }) {
-  return (
-    <mesh>
-      <boxGeometry args={[width, height, width]} />
-      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-    </mesh>
-  )
-}
 
 // ── Materials (matches the studio viewer palette) ─────────────────────────────
 function useMats(params) {
@@ -30,7 +19,8 @@ function useMats(params) {
   }, [params.primaryColor, params.accentColor])
 }
 
-// ── Entrance wrapper: each part drops in + scales up when revealed ─────────────
+// ── Entrance wrapper: each part scales up when revealed ───────────────────────
+// (Scale only — never touch position; the part's place is fixed by its <At y>.)
 function Part({ show, children }) {
   const ref = useRef()
   const lit = useRef(0) // 0..1 progress
@@ -41,24 +31,12 @@ function Part({ show, children }) {
     if (ref.current) {
       ref.current.visible = p > 0.01
       ref.current.scale.setScalar(p)
-      ref.current.position.y = base.current + (1 - p) * 8 // drop from above
     }
   })
-  // capture the group's authored y so the drop animation can offset from it
-  const base = useRef(0)
-  return (
-    <group
-      ref={(g) => {
-        ref.current = g
-        if (g) base.current = g.userData._y ?? g.position.y
-      }}
-    >
-      {children}
-    </group>
-  )
+  return <group ref={ref}>{children}</group>
 }
 
-// Position a part group at y and remember its authored y for the drop-in.
+// Position a part group at y; the inner <Part> only scales in.
 function At({ y, show, children }) {
   return (
     <group position={[0, y, 0]} userData={{ _y: y }}>
@@ -184,30 +162,21 @@ export default function CadAssembly({ params, revealed }) {
   const r = (params.arm_radius || 0.03) * 100
   const total = r * 2 + (params.upper_arm_len || 0.3) * 100 + r * 2.6 +
     (params.forearm_len || 0.26) * 100 + r * 2.5 + r * 2.2
-  const width = Math.max(r * 3, (params.grip_width || 0.08) * 100 + r * 2)
   const floorY = -total / 2 - 4
 
   return (
-    <Canvas shadows gl={{ antialias: true, alpha: true }} style={{ width: '100%', height: '100%' }}>
-      <PerspectiveCamera makeDefault position={[total, total * 0.4, total * 1.5]} fov={40} near={0.1} far={total * 12} />
-      <OrbitControls makeDefault enableDamping dampingFactor={0.08} enablePan={false} />
+    <Canvas shadows gl={{ antialias: true, alpha: true }} camera={{ position: [total * 0.8, total * 0.45, total * 1.4], fov: 42, near: 1, far: total * 14 }} style={{ width: '100%', height: '100%' }}>
+      <OrbitControls enableDamping dampingFactor={0.08} enablePan={false} target={[0, 0, 0]} minDistance={total * 0.8} maxDistance={total * 4} />
       <ambientLight intensity={0.7} />
       <hemisphereLight intensity={0.6} groundColor="#0a0a0f" />
       <directionalLight position={[40, 60, 30]} intensity={2.2} castShadow shadow-mapSize={[1024, 1024]} />
       <directionalLight position={[-30, 10, -20]} intensity={0.6} color="#7c3aed" />
       <pointLight position={[0, 0, 30]} intensity={0.9} color="#00d4ff" distance={160} />
-      {/* Environment isolated in its own boundary so a slow/failed HDRI load
-          can never blank the model. The Arm renders regardless. */}
       <Suspense fallback={null}>
         <Environment preset="city" />
       </Suspense>
       <Grid position={[0, floorY, 0]} args={[400, 400]} cellSize={5} cellThickness={0.5} sectionSize={20} sectionThickness={1} cellColor="#1a1a2e" sectionColor="#2a2a40" fadeDistance={total * 3} fadeStrength={1} infiniteGrid />
-      {/* <Bounds> auto-centers + fits the camera to the framing proxy, so the
-          model sits dead-center at any design size and viewport shape. */}
-      <Bounds key={Math.round(total)} fit clip observe margin={1.15}>
-        <FrameProxy width={width} height={total} />
-        <Arm params={params} revealed={revealed} />
-      </Bounds>
+      <Arm params={params} revealed={revealed} />
     </Canvas>
   )
 }
