@@ -41,11 +41,20 @@ Reason from the footage:
   prosthesis. If only one hand is ever visible performing actions, the other
   side is the side to prosthetize.
 
+To read the SPECIFIC action, reason through this internally before answering:
+- What object is in the working hand?
+- What is the hand DOING to it — twisting, tearing, folding, lifting, pouring,
+  cutting? Name the precise verb, not a vague one.
+- With only one hand, the person BRACES objects against a surface (sill, table,
+  lap, body) to replace the missing second hand. A hand pressing paper onto a
+  sill is almost certainly TEARING or FOLDING the paper, NOT wiping the surface.
+  Report the intended task, not the incidental surface contact.
+
 Infer and report:
-1. primary_action: a short, SPECIFIC description of the single main activity the
-   person is performing — concrete object + motion, e.g. "drinking water from a
-   bottle", "typing on a laptop", "picking up a cup". The design is optimized
-   around this action.
+1. primary_action: a short, SPECIFIC description of the single main activity —
+   concrete object + precise verb, e.g. "unscrewing a bottle cap", "tearing a
+   sheet of paper", "pouring water into a cup". The design is optimized around
+   this action.
 2. affected_side: "left" or "right" — the side that needs the prosthesis.
 3. residual_side: "left" or "right" — the functioning side doing the work.
 4. tasks: ADL task categories the primary_action implies, chosen ONLY from

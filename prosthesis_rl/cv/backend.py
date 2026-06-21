@@ -25,7 +25,7 @@ _TASK_NAMES = {"reach": "Reach target", "grasp": "Grasp object", "feeding": "Fee
 class PerceptionBackend:
     """Frame extraction + Gemma analysis, producing a validated ProblemSpec."""
 
-    def __init__(self, analyzer: GemmaVideoAnalyzer | None = None, n_frames: int = 6) -> None:
+    def __init__(self, analyzer: GemmaVideoAnalyzer | None = None, n_frames: int = 12) -> None:
         self.analyzer = analyzer or GemmaVideoAnalyzer()
         self.n_frames = n_frames
 

@@ -19,6 +19,23 @@ def _has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def _duration_s(clip_path: Path) -> float | None:
+    """Clip duration in seconds via ffprobe, or None if unavailable."""
+    if shutil.which("ffprobe") is None:
+        return None
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", str(clip_path),
+            ],
+            check=True, capture_output=True, timeout=30, text=True,
+        )
+        return float(out.stdout.strip())
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, ValueError):
+        return None
+
+
 def extract_frames(clip_path: str | Path, n_frames: int = 6, out_dir: str | Path | None = None) -> list[Path]:
     """Return up to ``n_frames`` evenly-spaced frame images from ``clip_path``.
 
@@ -40,8 +57,16 @@ def extract_frames(clip_path: str | Path, n_frames: int = 6, out_dir: str | Path
     out_dir.mkdir(parents=True, exist_ok=True)
     pattern = out_dir / "frame_%03d.jpg"
 
-    # thumbnail filter picks representative frames across the whole clip,
-    # then we cap the count to n_frames.
+    # Sample n_frames evenly across the WHOLE clip: fps = n_frames / duration so
+    # short clips still yield the full budget. Fall back to a fixed rate if we
+    # can't read the duration.
+    duration = _duration_s(clip_path)
+    if duration and duration > 0:
+        fps = max(n_frames / duration, 0.1)
+        vf = f"fps={fps:.4f}"
+    else:
+        vf = "thumbnail,fps=1/2"
+
     cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -50,7 +75,7 @@ def extract_frames(clip_path: str | Path, n_frames: int = 6, out_dir: str | Path
         "-i",
         str(clip_path),
         "-vf",
-        f"thumbnail,fps=1/2",
+        vf,
         "-frames:v",
         str(n_frames),
         "-y",

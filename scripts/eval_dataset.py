@@ -29,7 +29,7 @@ def main() -> None:
     total = 0
     for v in data["videos"]:
         clip = v["file"]
-        frames = extract_frames(clip, n_frames=8)
+        frames = extract_frames(clip, n_frames=12)
         det = analyzer.analyze(frames)
         total += 1
         side_ok = det.get("affected_side") == v["affected_side"]
