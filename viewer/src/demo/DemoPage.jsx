@@ -126,7 +126,6 @@ export default function DemoPage() {
   const progress = Math.round((completed / PIPELINE.length) * 100)
   const activeStage = PIPELINE.find((s) => s.key === active)
   const activeOut = outputFor(active)
-  const activePlaceholder = activeStage?.status === 'pending' && !overrides[active]
 
   const partNote = (key) => {
     const cm = (m) => `${Math.round(m * 100)} cm`
@@ -203,7 +202,6 @@ export default function DemoPage() {
               <span className="emit-tag">{activeStage?.emits}</span>
             </div>
             <p className="detail-blurb">{activeStage?.blurb}</p>
-            {activePlaceholder && <div className="ph-note">⚠ integration not wired — showing expected output{activeStage?.owner ? ` · ${activeStage.owner}` : ''}</div>}
             <SpecView data={activeOut} contract={activeStage?.emits} />
             {activeStage?.status === 'pending' && (
               <button className="btn tiny" onClick={() => setGate(active)}>
