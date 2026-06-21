@@ -29,6 +29,42 @@
       "tasks": ["grasp"],
       "bimanual_normally": true,
       "notes": "tearing paper normally needs two hands; here the sill substitutes for the missing hand to brace the sheet. Visually ambiguous (looks like wiping)."
+    },
+    {
+      "file": "test_vids/od_video-1348_singular_display.MOV",
+      "primary_action": "plugging a charger into a phone one-handed",
+      "affected_side": "left",
+      "residual_side": "right",
+      "tasks": ["reach", "grasp"],
+      "bimanual_normally": true,
+      "notes": "charging normally needs one hand to hold the phone and the other to insert the cable; done single-handed by bracing the phone"
+    },
+    {
+      "file": "test_vids/od_video-1350_singular_display.MOV",
+      "primary_action": "zipping up a bag one-handed",
+      "affected_side": "left",
+      "residual_side": "right",
+      "tasks": ["grasp", "reach"],
+      "bimanual_normally": true,
+      "notes": "zipping normally needs one hand to hold the bag taut and the other to pull the zipper; done single-handed"
+    },
+    {
+      "file": "test_vids/od_video-1352_singular_display.MOV",
+      "primary_action": "opening a food container lid one-handed",
+      "affected_side": "left",
+      "residual_side": "right",
+      "tasks": ["grasp"],
+      "bimanual_normally": true,
+      "notes": "opening a lid normally needs one hand to hold the container and the other to pry/twist; done single-handed by bracing"
+    },
+    {
+      "file": "test_vids/od_video-1356_singular_display (2).mov",
+      "primary_action": "folding a sheet of paper one-handed",
+      "affected_side": "left",
+      "residual_side": "right",
+      "tasks": ["grasp"],
+      "bimanual_normally": true,
+      "notes": "folding paper normally needs two hands; done single-handed by bracing against a surface"
     }
   ]
 }
