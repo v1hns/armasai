@@ -22,8 +22,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-# Gemma 3 multimodal, served through the Gemini API. Override with GEMMA_MODEL.
-DEFAULT_MODEL = "gemma-3-27b-it"
+# Multimodal model for problem detection. Override with GEMMA_MODEL.
+# Gemini Flash works on both the API-key and Vertex paths and is fast/cheap;
+# swap to a Gemma 3 id (e.g. "gemma-3-27b-it") on the API-key path if preferred.
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 _PROMPT = """You are a rehabilitation-robotics assistant analyzing frames from a
 short clip of a person attempting activities of daily living (ADL) with an
@@ -65,6 +67,11 @@ def _api_key() -> str | None:
     return os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
 
 
+def _use_vertex() -> bool:
+    """True when configured to auth via Google Cloud ADC instead of an API key."""
+    return os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in {"1", "true", "yes"}
+
+
 def _extract_json(text: str) -> dict[str, Any] | None:
     """Pull the first JSON object out of a model response."""
     match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -84,7 +91,8 @@ class GemmaVideoAnalyzer:
 
     @property
     def available(self) -> bool:
-        return _api_key() is not None
+        # Live either via an API key, or via Vertex AI / Google Cloud ADC.
+        return _api_key() is not None or _use_vertex()
 
     def analyze(self, frame_paths: list[Path]) -> dict[str, Any]:
         if not frame_paths or not self.available:
@@ -99,8 +107,13 @@ class GemmaVideoAnalyzer:
     def _analyze_live(self, frame_paths: list[Path]) -> dict[str, Any]:
         from google import genai
         from google.genai import types
+        from google.genai.types import HttpOptions
 
-        client = genai.Client(api_key=_api_key())
+        if _use_vertex():
+            # Vertex AI path: auth via Google Cloud ADC + project/location env.
+            client = genai.Client(http_options=HttpOptions(api_version="v1"))
+        else:
+            client = genai.Client(api_key=_api_key())
         parts: list[Any] = [_PROMPT]
         for path in frame_paths:
             data = Path(path).read_bytes()
