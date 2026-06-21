@@ -32,48 +32,26 @@ def _make_env_fn(design: DesignParams, mesh_dir, seed: int):
     return _init
 
 
-class _ProgressCallback:
-    """Minimal SB3-compatible callback that fires a progress_cb every N steps."""
+def _make_progress_callback(progress_cb, total: int, interval: int = 500):
+    """Return a proper SB3 BaseCallback that fires progress_cb every N steps."""
+    from stable_baselines3.common.callbacks import BaseCallback
 
-    def __init__(self, progress_cb, total: int, interval: int = 500) -> None:
-        self._cb = progress_cb
-        self._total = total
-        self._interval = interval
-        self.num_timesteps = 0
+    class _Cb(BaseCallback):
+        def _on_step(self) -> bool:
+            if self.num_timesteps % interval < self.training_env.num_envs:
+                try:
+                    buf = self.model.ep_info_buffer
+                    mean_rew = float(sum(e["r"] for e in buf) / len(buf)) if buf else 0.0
+                except Exception:
+                    mean_rew = 0.0
+                progress_cb({
+                    "timestep": self.num_timesteps,
+                    "mean_reward": mean_rew,
+                    "progress": self.num_timesteps / max(1, total),
+                })
+            return True
 
-    # SB3 callbacks duck-type: init / on_step / on_rollout_end
-    def init_callback(self, model) -> None:
-        self._model = model
-
-    def on_training_start(self, *_, **__) -> None:
-        pass
-
-    def on_rollout_start(self) -> None:
-        pass
-
-    def on_rollout_end(self) -> None:
-        pass
-
-    def on_step(self) -> bool:
-        self.num_timesteps = self._model.num_timesteps
-        if self.num_timesteps % self._interval < self._model.n_envs:
-            try:
-                ep_rew = self._model.ep_info_buffer
-                mean_rew = (
-                    float(sum(e["r"] for e in ep_rew) / len(ep_rew))
-                    if ep_rew else 0.0
-                )
-            except Exception:
-                mean_rew = 0.0
-            self._cb({
-                "timestep": self.num_timesteps,
-                "mean_reward": mean_rew,
-                "progress": self.num_timesteps / max(1, self._total),
-            })
-        return True
-
-    def on_training_end(self) -> None:
-        pass
+    return _Cb()
 
 
 def train_reach_policy(
@@ -107,7 +85,7 @@ def train_reach_policy(
         policy_kwargs={"net_arch": [128, 128]},
     )
 
-    cb = _ProgressCallback(progress_cb, timesteps) if progress_cb else None
+    cb = _make_progress_callback(progress_cb, timesteps) if progress_cb else None
     model.learn(total_timesteps=timesteps, progress_bar=False, callback=cb)
 
     POLICY_DIR.mkdir(parents=True, exist_ok=True)
