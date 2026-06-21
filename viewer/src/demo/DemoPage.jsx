@@ -4,26 +4,29 @@ import MultiClipUpload from './MultiClipUpload.jsx'
 import AgentWorkPanel from './AgentWorkPanel.jsx'
 import MechanicalReportPanel from './MechanicalReportPanel.jsx'
 import OptimizationTrace from './OptimizationTrace.jsx'
-import { detectionToDesign } from './mapping.js'
+import ScenarioPanel from './ScenarioPanel.jsx'
 import { CAD_PARTS } from './demoData.js'
 import { downloadStl } from '../lib/api.js'
 import './demo.css'
 
-// Pipeline stage definitions for the rail
+// All stages the pipeline actually emits, in order
 const PIPELINE_STAGES = [
-  { key: 'upload',      name: 'Upload',       icon: '🎥', emits: 'Clips' },
   { key: 'perception',  name: 'Perception',   icon: '👁',  emits: 'ProblemSpec × N' },
-  { key: 'design',      name: 'Design Agent', icon: '🦾', emits: 'Candidates' },
-  { key: 'sim_eval',    name: 'Sim + Mech',   icon: '🧪', emits: 'EvalResult + FoS' },
-  { key: 'rl_loop',     name: 'RL Loop',      icon: '🎮', emits: 'PolicyArtifact' },
-  { key: 'final',       name: 'Final Design', icon: '⬡',  emits: 'CAD + Report' },
+  { key: 'scenario',   name: 'Scenario',     icon: '🎯', emits: 'ADL TaskSpec' },
+  { key: 'design',     name: 'Design Agent', icon: '🦾', emits: 'Candidates' },
+  { key: 'cad',        name: 'CAD + BOM',    icon: '⚙',  emits: 'MJCF + STL' },
+  { key: 'sim_eval',   name: 'Sim + Mech',   icon: '🧪', emits: 'EvalResult + FoS' },
+  { key: 'rl_loop',    name: 'RL Loop',      icon: '🎮', emits: 'PolicyArtifact' },
+  { key: 'final',      name: 'Final Design', icon: '⬡',  emits: 'CAD + Report' },
 ]
+
+const TRAJ_FPS = 20  // playback speed for sim trajectory frames
 
 export default function DemoPage() {
   const [clips, setClips] = useState([])
   const [running, setRunning] = useState(false)
   const [stageStatus, setStageStatus] = useState({})
-  const [activeStage, setActiveStage] = useState('upload')
+  const [activeStage, setActiveStage] = useState('perception')
 
   // Pipeline outputs
   const [clipObservations, setClipObservations] = useState([])
@@ -33,20 +36,42 @@ export default function DemoPage() {
   const [designIterations, setDesignIterations] = useState([])
   const [mechReport, setMechReport] = useState(null)
   const [cadParams, setCadParams] = useState(null)
+  const [scenario, setScenario] = useState(null)
   const [revealed, setRevealed] = useState(0)
   const [exporting, setExporting] = useState(false)
   const [stats, setStats] = useState(null)
   const [logs, setLogs] = useState([])
 
+  // Trajectory playback
+  const [trajectory, setTrajectory] = useState([])
+  const [trajIdx, setTrajIdx] = useState(0)
+  const trajTimerRef = useRef(null)
+
   const abortRef = useRef(null)
   const runId = useRef(0)
+
+  // ── Current qpos for 3D arm animation ──────────────────────────────────────
+  const currentQpos = trajectory.length > 0 ? trajectory[trajIdx]?.qpos : null
+
+  // ── Trajectory playback ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (trajTimerRef.current) clearInterval(trajTimerRef.current)
+    if (!trajectory.length) { setTrajIdx(0); return }
+    let idx = 0
+    trajTimerRef.current = setInterval(() => {
+      idx = (idx + 1) % trajectory.length
+      setTrajIdx(idx)
+    }, 1000 / TRAJ_FPS)
+    return () => clearInterval(trajTimerRef.current)
+  }, [trajectory])
 
   const reset = useCallback(() => {
     abortRef.current?.abort()
     runId.current += 1
+    if (trajTimerRef.current) clearInterval(trajTimerRef.current)
     setRunning(false)
     setStageStatus({})
-    setActiveStage('upload')
+    setActiveStage('perception')
     setClipObservations([])
     setUnifiedRequirements(null)
     setAgentFindings([])
@@ -54,9 +79,12 @@ export default function DemoPage() {
     setDesignIterations([])
     setMechReport(null)
     setCadParams(null)
+    setScenario(null)
     setRevealed(0)
     setStats(null)
     setLogs([])
+    setTrajectory([])
+    setTrajIdx(0)
   }, [])
 
   const addLog = useCallback((msg) => setLogs((l) => [...l.slice(-49), msg]), [])
@@ -64,10 +92,7 @@ export default function DemoPage() {
   const runPipeline = useCallback(async () => {
     if (!clips.length || running) return
     const serverPaths = clips.map((c) => c.serverPath).filter(Boolean)
-    if (!serverPaths.length) {
-      addLog('No uploaded clips — upload clips first.')
-      return
-    }
+    if (!serverPaths.length) { addLog('Upload clips first.'); return }
 
     runId.current += 1
     const myRun = runId.current
@@ -84,9 +109,12 @@ export default function DemoPage() {
     setDesignIterations([])
     setMechReport(null)
     setCadParams(null)
+    setScenario(null)
     setRevealed(0)
     setStats(null)
     setLogs([])
+    setTrajectory([])
+    setTrajIdx(0)
 
     try {
       const resp = await fetch('/api/run-multi-pipeline', {
@@ -102,22 +130,14 @@ export default function DemoPage() {
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
-        if (!alive()) break
-
+        if (done || !alive()) break
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split('\n')
         buf = lines.pop()
-
         for (const line of lines) {
           const trimmed = line.replace(/^data:\s*/, '').trim()
           if (!trimmed) continue
-          try {
-            const evt = JSON.parse(trimmed)
-            handleEvent(evt)
-          } catch {
-            // not JSON — ignore
-          }
+          try { handleEvent(JSON.parse(trimmed)) } catch { /* non-JSON */ }
         }
       }
     } catch (err) {
@@ -129,8 +149,9 @@ export default function DemoPage() {
 
   const handleEvent = useCallback((evt) => {
     const { type, stage } = evt
-    addLog(`[${stage}] ${type}`)
+    addLog(`[${stage ?? 'pipeline'}] ${type}`)
 
+    // ── Stage lifecycle ─────────────────────────────────────────────────────
     if (type === 'stage_start') {
       setActiveStage(stage)
       setStageStatus((s) => ({ ...s, [stage]: 'running' }))
@@ -150,49 +171,77 @@ export default function DemoPage() {
         }
       }
 
+      if (stage === 'scenario') {
+        // Nathan's ScenarioAgent result — store for display
+        setScenario({
+          task_id: evt.task_id,
+          posture: evt.posture,
+          source: evt.source,
+          description: evt.description,
+          success_condition: evt.success_condition,
+          waypoints: evt.waypoints || [],
+          objects: evt.objects || [],
+        })
+      }
+
+      if (stage === 'cad') {
+        // Update 3D view params from first candidate's CAD output
+        if (evt.candidate === 0 && evt.components?.length) {
+          const firstComp = evt.components[0]
+          if (firstComp) addLog(`CAD: ${evt.name} · ${evt.material || 'PA12'}`)
+        }
+      }
+
       if (stage === 'design' && evt.candidates?.length) {
-        // Use first candidate params to update 3D view
         const c = evt.candidates[0]
-        if (c) setCadParams((prev) => ({ ...(prev || {}), ...c }))
+        if (c) {
+          setCadParams((prev) => ({
+            ...(prev || {}),
+            upper_arm_len: c.upper_m || prev?.upper_arm_len || 0.30,
+            forearm_len: c.fore_m || prev?.forearm_len || 0.26,
+            primaryColor: '#0d1117',
+            accentColor: '#00d4ff',
+          }))
+        }
       }
 
       if (stage === 'final') {
         if (evt.stats) setStats(evt.stats)
         if (evt.design_iterations) setDesignIterations(evt.design_iterations)
-        // Trigger CAD part reveal
+        // Wire up trajectory from Nathan's sim rollout
+        if (evt.trajectory?.length) {
+          setTrajectory(evt.trajectory)
+          setTrajIdx(0)
+          addLog(`Trajectory: ${evt.trajectory.length} frames at ${TRAJ_FPS}fps`)
+        }
         revealParts()
       }
     }
 
+    // ── Agent findings ──────────────────────────────────────────────────────
     if (type === 'agent_finding') {
-      if (stage === 'perception') {
-        if (evt.identified_problems) {
-          setClipObservations((prev) => {
-            const existing = prev.findIndex((o) => o.clip === evt.clip)
-            const obs = {
-              clip: evt.clip,
-              primary_action: evt.primary_action,
-              affected_side: evt.affected_side,
-              identified_problems: evt.identified_problems || [],
-            }
-            if (existing >= 0) {
-              const next = [...prev]
-              next[existing] = obs
-              return next
-            }
-            return [...prev, obs]
-          })
-        }
+      if (stage === 'perception' && evt.identified_problems) {
+        setClipObservations((prev) => {
+          const idx = prev.findIndex((o) => o.clip === evt.clip)
+          const obs = {
+            clip: evt.clip,
+            primary_action: evt.primary_action,
+            affected_side: evt.affected_side,
+            identified_problems: evt.identified_problems || [],
+          }
+          if (idx >= 0) { const next = [...prev]; next[idx] = obs; return next }
+          return [...prev, obs]
+        })
       }
       if (stage === 'design' && (evt.rationale || evt.work)) {
         setAgentFindings((prev) => [...prev, evt])
       }
     }
 
-    if (type === 'work_trace') {
-      setWorkTraces((prev) => [...prev, evt])
-    }
+    // ── Work trace ──────────────────────────────────────────────────────────
+    if (type === 'work_trace') setWorkTraces((prev) => [...prev, evt])
 
+    // ── Mechanical result ───────────────────────────────────────────────────
     if (type === 'mechanical_result') {
       setMechReport({
         components: evt.components || [],
@@ -204,13 +253,14 @@ export default function DemoPage() {
       })
     }
 
-    if (type === 'sim_frame' && evt.candidate === 0) {
-      // Update 3D params from sim step (future: animate joints)
+    // ── RL step progress → update CAD view from best qpos ──────────────────
+    if (type === 'sim_frame' && evt.qpos?.length) {
+      // Live sim frame: update the 3D arm joints during evaluation
+      setCadParams((prev) => prev ? { ...prev, _live_qpos: evt.qpos } : prev)
     }
 
-    if (type === 'done') {
-      setStageStatus((s) => ({ ...s, final: 'done' }))
-    }
+    // ── Done ────────────────────────────────────────────────────────────────
+    if (type === 'done') setStageStatus((s) => ({ ...s, final: 'done' }))
 
     if (type === 'error') {
       addLog(`ERROR: ${evt.message || JSON.stringify(evt)}`)
@@ -229,20 +279,27 @@ export default function DemoPage() {
   }, [])
 
   const exportStl = useCallback(async () => {
-    const params = cadParams || {}
-    if (!params || exporting) return
+    if (!cadParams || exporting) return
     setExporting(true)
-    try { await downloadStl(params, 'design') }
+    try { await downloadStl(cadParams, 'design') }
     finally { setExporting(false) }
   }, [cadParams, exporting])
 
-  useEffect(() => () => { abortRef.current?.abort() }, [])
+  useEffect(() => () => { abortRef.current?.abort(); clearInterval(trajTimerRef.current) }, [])
 
   const completed = PIPELINE_STAGES.filter((s) => stageStatus[s.key] === 'done').length
   const progress = Math.round((completed / PIPELINE_STAGES.length) * 100)
   const viable = stats?.ik_success_rate >= 0.4 && (stats?.safety_factor ?? 0) >= 2.5
-  const defaultCadParams = { upper_arm_len: 0.30, forearm_len: 0.26, grip_width: 0.08,
-    joint_stiffness: 1.0, arm_radius: 0.03, primaryColor: '#0d1117', accentColor: '#00d4ff' }
+  const defaultCadParams = {
+    upper_arm_len: 0.30, forearm_len: 0.26, grip_width: 0.08,
+    joint_stiffness: 1.0, arm_radius: 0.03,
+    primaryColor: '#0d1117', accentColor: '#00d4ff',
+  }
+  const displayParams = cadParams || defaultCadParams
+  // qpos from trajectory playback overrides live sim frames
+  const displayQpos = trajectory.length > 0
+    ? trajectory[trajIdx]?.qpos
+    : cadParams?._live_qpos ?? null
 
   return (
     <div className="demo demo-multi">
@@ -256,7 +313,7 @@ export default function DemoPage() {
           </div>
         </div>
         <div className="demo-flow-label">
-          {clips.length} clip{clips.length !== 1 ? 's' : ''} → parallel perception → advanced design → sim+mech → RL
+          {clips.length} clip{clips.length !== 1 ? 's' : ''} → perception → scenario → design → CAD → sim → RL
         </div>
         <div className="demo-actions">
           <div className="demo-progress">
@@ -306,12 +363,18 @@ export default function DemoPage() {
       {/* ── Main body: 3 columns ── */}
       <div className="body body-multi">
 
-        {/* Left: upload + agent work */}
+        {/* Left: upload + scenario + agent work */}
         <section className="col-left">
           <div className="panel">
             <div className="panel-head">🎥 Input Clips ({clips.length})</div>
             <MultiClipUpload clips={clips} onClips={setClips} disabled={running} />
           </div>
+
+          <ScenarioPanel
+            scenario={scenario}
+            trajectory={trajectory}
+            trajectoryIdx={trajIdx}
+          />
 
           <AgentWorkPanel
             clipObservations={clipObservations}
@@ -330,19 +393,23 @@ export default function DemoPage() {
           )}
         </section>
 
-        {/* Center: 3D view + stats */}
+        {/* Center: 3D view + stats + trace */}
         <section className="col-center">
           <div className="cad-viewport">
             <div className="cad-tag">
               CAD OUTPUT
               {stats?.primary_action ? ` · "${stats.primary_action}"` : ''}
               {stats?.affected_side ? ` · ${stats.affected_side} side` : ''}
+              {trajectory.length > 0 && ` · sim playback`}
             </div>
-            <CadAssembly params={cadParams || defaultCadParams} revealed={revealed} />
+            <CadAssembly
+              params={displayParams}
+              revealed={revealed}
+              qpos={displayQpos}
+            />
             {revealed === 0 && <div className="cad-empty">Upload clips and run the pipeline</div>}
           </div>
 
-          {/* Stats */}
           {stats && (
             <div className="stats-bar">
               <div className="stat-item">

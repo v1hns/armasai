@@ -434,6 +434,80 @@ app.post('/api/upload-clips', (req, res) => {
   })
 })
 
+// ── Scene generation (Nathan's ScenarioAgent + optional Gizmo bake) ───────────
+const GEN_SCENE_SCRIPT = path.resolve(REPO_ROOT, 'scripts', 'gen_scene.py')
+
+// In-memory state for the current scene generation job (one at a time).
+let _sceneJob = { status: 'idle', stage: null, scenario: null, scene: null, error: null }
+
+app.post('/api/generate-scene', (req, res) => {
+  const { action = 'reach for an object', bake_gizmo = false } = req.body || {}
+  openSSE(res)
+  _sceneJob = { status: 'running', stage: 'scenario', scenario: null, scene: null, error: null }
+
+  const pythonBin = fs.existsSync(path.join(REPO_ROOT, '.venv', 'bin', 'python3'))
+    ? path.join(REPO_ROOT, '.venv', 'bin', 'python3')
+    : (process.env.ARMASAI_PYTHON || 'python3')
+
+  const child = spawn(pythonBin, [GEN_SCENE_SCRIPT], {
+    env: { ...process.env, PYTHONPATH: REPO_ROOT },
+    timeout: 10 * 60 * 1000, // 10 min (Gizmo bake can take a few minutes)
+  })
+  child.stdin.write(JSON.stringify({ action, bake_gizmo }))
+  child.stdin.end()
+
+  streamPipelineEvents(child, res, (code) => {
+    _sceneJob.status = code === 0 ? 'done' : 'error'
+    if (code !== 0) _sceneJob.error = `exit code ${code}`
+  })
+
+  // Also parse events to update in-memory state for polling
+  child.stdout.on('data', (chunk) => {
+    for (const line of chunk.toString().split('\n')) {
+      const t = line.trim()
+      if (!t) continue
+      try {
+        const evt = JSON.parse(t)
+        if (evt.type === 'status') _sceneJob.stage = evt.stage_name || evt.stage
+        if (evt.type === 'done') { _sceneJob.scenario = evt.scenario; _sceneJob.scene = evt.scene }
+        if (evt.type === 'error') _sceneJob.error = evt.message
+      } catch { /* ignore */ }
+    }
+  })
+})
+
+app.get('/api/scene-status', (_req, res) => {
+  res.json(_sceneJob)
+})
+
+app.get('/api/scene-showcase', (req, res) => {
+  // Return the showcase scenario instantly (ADL library, no bake needed). The
+  // gen_scene.py script emits multiple NDJSON lines; we grab the last "done" one.
+  const action = req.query.action || 'reach for an object'
+  const pythonBin = fs.existsSync(path.join(REPO_ROOT, '.venv', 'bin', 'python3'))
+    ? path.join(REPO_ROOT, '.venv', 'bin', 'python3')
+    : (process.env.ARMASAI_PYTHON || 'python3')
+
+  const child = spawn(pythonBin, [GEN_SCENE_SCRIPT], {
+    env: { ...process.env, PYTHONPATH: REPO_ROOT },
+    timeout: 15_000,
+  })
+  child.stdin.write(JSON.stringify({ action, bake_gizmo: false }))
+  child.stdin.end()
+
+  let buf = ''
+  child.stdout.on('data', (chunk) => { buf += chunk.toString() })
+  child.on('close', () => {
+    const lines = buf.split('\n').filter((l) => l.trim())
+    let last = null
+    for (const line of lines) {
+      try { const evt = JSON.parse(line); if (evt.type === 'done') last = evt } catch { /* skip */ }
+    }
+    if (last) res.json(last)
+    else res.status(500).json({ error: 'scene generation returned no result' })
+  })
+})
+
 // ── Multi-clip pipeline (SSE stream) ──────────────────────────────────────────
 // Spawns Python run_multi_pipeline.py and forwards newline-delimited JSON events
 // as SSE to the browser.

@@ -105,10 +105,20 @@ function Gripper({ gripW, r, mat }) {
 }
 
 // ── The arm, assembled straight (top→down) so each part reads as "added" ───────
-function Arm({ params, revealed }) {
+// qpos = [shoulder_flex, shoulder_abduct, elbow, wrist] in radians (MuJoCo convention)
+function Arm({ params, revealed, qpos }) {
   const mat = useMats(params)
   const ref = useRef()
-  useFrame((s) => { if (ref.current) ref.current.rotation.y = Math.sin(s.clock.elapsedTime * 0.25) * 0.25 })
+  const idleRef = useRef(0)
+  useFrame((s, dt) => {
+    // Idle sway only when not playing back a trajectory
+    if (!qpos) {
+      idleRef.current += dt * 0.25
+      if (ref.current) ref.current.rotation.y = Math.sin(idleRef.current) * 0.25
+    } else {
+      if (ref.current) ref.current.rotation.y = 0
+    }
+  })
 
   const r = (params.arm_radius || 0.03) * 100
   const upperLen = params.upper_arm_len * 100
@@ -121,6 +131,12 @@ function Arm({ params, revealed }) {
   const wristH = r * 2.5
   const gripH = r * 2.2
 
+  // qpos in radians: [shoulder_flex(Y), shoulder_abduct(X), elbow(Y), wrist(X)]
+  const sf  = qpos?.[0] ?? 0  // shoulder flexion
+  const sa  = qpos?.[1] ?? 0  // shoulder abduction
+  const elb = qpos?.[2] ?? 0  // elbow
+  const wr  = qpos?.[3] ?? 0  // wrist
+
   let y = 0
   const ySocket = y - socketH / 2; y -= socketH
   const yUpper = y - upperLen / 2; y -= upperLen
@@ -132,14 +148,32 @@ function Arm({ params, revealed }) {
   // Center the arm's geometric centroid on the origin so it frames cleanly.
   const centerOff = total / 2
 
+  // Hierarchical offsets for kinematic joint animation:
+  // shoulder group → elbow group → wrist group
+  const shoulderPivotY = ySocket  // pivot at socket bottom
+  const elbowPivotY    = yElbow   // pivot at elbow center
+
   return (
     <group ref={ref} position={[0, centerOff, 0]}>
+      {/* Socket: fixed to mount — no joint rotation */}
       <At y={ySocket} show={revealed > 0}><Socket r={r * 1.4} mat={mat} /></At>
-      <At y={yUpper} show={revealed > 1}><Tube len={upperLen} r={r} mat={mat} /></At>
-      <At y={yElbow} show={revealed > 2}><Elbow r={r} stiffness={params.joint_stiffness} mat={mat} /></At>
-      <At y={yFore} show={revealed > 3}><Tube len={foreLen} r={r * 0.9} mat={mat} /></At>
-      <At y={yWrist} show={revealed > 4}><Wrist r={r * 0.9} mat={mat} /></At>
-      <At y={yGrip} show={revealed > 5}><Gripper gripW={gripW} r={r * 0.85} mat={mat} /></At>
+
+      {/* Shoulder group: upper arm + elbow + forearm + wrist + gripper all rotate together */}
+      <group position={[0, shoulderPivotY, 0]} rotation={[sa, sf, 0]}>
+        <At y={yUpper - shoulderPivotY} show={revealed > 1}><Tube len={upperLen} r={r} mat={mat} /></At>
+
+        {/* Elbow group: forearm + wrist + gripper rotate relative to upper arm */}
+        <group position={[0, elbowPivotY - shoulderPivotY, 0]} rotation={[0, elb, 0]}>
+          <At y={yElbow - elbowPivotY} show={revealed > 2}><Elbow r={r} stiffness={params.joint_stiffness} mat={mat} /></At>
+          <At y={yFore - elbowPivotY} show={revealed > 3}><Tube len={foreLen} r={r * 0.9} mat={mat} /></At>
+
+          {/* Wrist group */}
+          <group position={[0, yWrist - elbowPivotY, 0]} rotation={[wr, 0, 0]}>
+            <At y={0} show={revealed > 4}><Wrist r={r * 0.9} mat={mat} /></At>
+            <At y={yGrip - yWrist} show={revealed > 5}><Gripper gripW={gripW} r={r * 0.85} mat={mat} /></At>
+          </group>
+        </group>
+      </group>
 
       {revealed > 0 && revealed <= CAD_PARTS.length && (
         <Html position={[0, centerOff * 0 + 2, 0]} center style={{ pointerEvents: 'none' }}>
@@ -157,7 +191,7 @@ function Arm({ params, revealed }) {
   )
 }
 
-export default function CadAssembly({ params, revealed }) {
+export default function CadAssembly({ params, revealed, qpos }) {
   // Full-model extent (same stack as <Arm>) for the framing proxy + grid floor.
   const r = (params.arm_radius || 0.03) * 100
   const total = r * 2 + (params.upper_arm_len || 0.3) * 100 + r * 2.6 +
@@ -176,7 +210,7 @@ export default function CadAssembly({ params, revealed }) {
         <Environment preset="city" />
       </Suspense>
       <Grid position={[0, floorY, 0]} args={[400, 400]} cellSize={5} cellThickness={0.5} sectionSize={20} sectionThickness={1} cellColor="#1a1a2e" sectionColor="#2a2a40" fadeDistance={total * 3} fadeStrength={1} infiniteGrid />
-      <Arm params={params} revealed={revealed} />
+      <Arm params={params} revealed={revealed} qpos={qpos} />
     </Canvas>
   )
 }
