@@ -45,22 +45,28 @@
         font-size: 12px;
       }
 
-      /* Toggle button (always visible, top-right) */
+      /* Metrics show/hide icon (always visible, top-right) */
       #dash-toggle {
         position: absolute;
         top: 14px;
         right: 14px;
-        z-index: 30;
+        z-index: 40;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         background: var(--card);
         color: var(--fg);
         border: 1px solid var(--line);
         border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 13px;
+        font-size: 17px;
+        line-height: 1;
         cursor: pointer;
       }
       #dash-toggle:hover {
         border-color: var(--accent);
+        color: var(--accent);
       }
 
       /* Right-side dashboard panel */
@@ -182,6 +188,7 @@
     </script>
   </head>
   <body>
+    <button id="dash-toggle" title="Show / hide metrics">▦</button>
     <div id="dash">
       <h1>
         <span class="dot" id="status-dot" style="background: #888"></span>PPO ·

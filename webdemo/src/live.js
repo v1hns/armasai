@@ -394,6 +394,13 @@ if (resetBtn) {
   });
 }
 
+// --- metrics show/hide icon -------------------------------------------------
+const dashEl = document.getElementById("dash");
+const dashToggle = document.getElementById("dash-toggle");
+if (dashToggle && dashEl) {
+  dashToggle.addEventListener("click", () => dashEl.classList.toggle("hidden"));
+}
+
 // --- poll loop --------------------------------------------------------------
 async function poll() {
   try {
