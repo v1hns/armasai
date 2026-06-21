@@ -1,0 +1,52 @@
+<!-- @dsCard group="Components" name="Readable Spec View" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ARMASAI · Spec View</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#0a0a0f; --surface:#111118; --surface2:#1a1a24; --border:#2a2a3a; --accent:#00d4ff; --text:#e8e8f0; --text-muted:#6b6b80; --font:'Inter',sans-serif; --mono:'JetBrains Mono',monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font); padding:28px; display:flex; gap:24px; }
+  .panel { width:330px; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; }
+  .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .contract { font-family:var(--mono); font-size:10px; color:var(--accent); letter-spacing:.06em; text-transform:uppercase; }
+  .toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .toggle b { font-family:var(--mono); font-size:9.5px; padding:3px 8px; color:var(--text-muted); font-weight:400; }
+  .toggle b.on { background:var(--surface2); color:var(--accent); }
+  .row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:6px 8px; border-radius:6px; }
+  .row:nth-child(odd){ background:rgba(255,255,255,.015); }
+  .k { font-size:11.5px; color:var(--text-muted); } .v { font-family:var(--mono); font-size:11.5px; }
+  .chips { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+  .chip { font-family:var(--mono); font-size:10px; color:var(--accent); background:rgba(0,212,255,.08); border:1px solid rgba(0,212,255,.2); border-radius:4px; padding:1px 7px; }
+  .subhead { font-family:var(--mono); font-size:10.5px; color:var(--accent); margin:6px 0 2px 8px; }
+  .subrows { border-left:1px solid var(--border); margin-left:8px; padding-left:4px; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="head"><span class="contract">ProblemSpec</span><div class="toggle"><b class="on">readable</b><b>json</b></div></div>
+    <div class="row"><span class="k">Primary action</span><span class="v">tearing a sheet of paper</span></div>
+    <div class="row"><span class="k">Affected side</span><span class="v">left</span></div>
+    <div class="row"><span class="k">Residual side</span><span class="v">right</span></div>
+    <div class="row"><span class="k">Tasks</span><span class="chips"><span class="chip">reach</span><span class="chip">grasp</span></span></div>
+    <div class="row"><span class="k">Grip capacity</span><span class="v">40%</span></div>
+    <div class="subhead">Range of motion</div>
+    <div class="subrows">
+      <div class="row"><span class="k">Shoulder flex</span><span class="v">110°</span></div>
+      <div class="row"><span class="k">Elbow flex</span><span class="v">130°</span></div>
+      <div class="row"><span class="k">Wrist rot</span><span class="v">60°</span></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="head"><span class="contract">DesignParams</span><div class="toggle"><b class="on">readable</b><b>json</b></div></div>
+    <div class="row"><span class="k">Mount frame</span><span class="v">torso_left</span></div>
+    <div class="row"><span class="k">Upper arm</span><span class="v">31.0 cm</span></div>
+    <div class="row"><span class="k">Forearm</span><span class="v">27.0 cm</span></div>
+    <div class="row"><span class="k">Grip width</span><span class="v">7.5 cm</span></div>
+    <div class="row"><span class="k">Joint stiffness</span><span class="v">1.0</span></div>
+    <div class="row"><span class="k">Joints</span><span class="chips"><span class="chip">shoulder_flex</span><span class="chip">elbow</span><span class="chip">wrist</span></span></div>
+  </div>
+</body>
+</html>

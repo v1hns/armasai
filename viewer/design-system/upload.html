@@ -1,0 +1,45 @@
+<!-- @dsCard group="Pipeline" name="Ray-Ban Upload (dropzone + preview)" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ARMASAI · Upload</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#0a0a0f; --surface:#111118; --border:#2a2a3a; --accent:#00d4ff; --text:#e8e8f0; --text-muted:#6b6b80; --font:'Inter',sans-serif; --mono:'JetBrains Mono',monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font); padding:28px; display:flex; gap:24px; }
+  .wrap { width:300px; }
+  .cap { font-family:var(--mono); font-size:10px; color:var(--text-muted); letter-spacing:.08em; margin-bottom:8px; }
+  .drop { position:relative; aspect-ratio:16/9; border:1px dashed var(--border); border-radius:8px; overflow:hidden; background:linear-gradient(160deg,#1a1622,#0c0c12); }
+  .drop.over { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .cta { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; background:rgba(10,10,15,.35); }
+  .up { font-size:22px; color:var(--accent); }
+  .cta b { font-size:12.5px; } .sub { font-family:var(--mono); font-size:9.5px; color:var(--text-muted); }
+  .preview { position:relative; aspect-ratio:16/9; border:1px solid var(--accent); border-radius:8px; overflow:hidden; box-shadow:0 0 22px rgba(0,212,255,.25); background:linear-gradient(160deg,#1a1622,#0c0c12); }
+  .bottle { position:absolute; left:46%; bottom:38%; width:13%; height:34%; background:linear-gradient(90deg,#2a6a78,#3fb6c8,#2a6a78); border-radius:6px; }
+  .rec { position:absolute; top:7px; left:8px; font-family:var(--mono); font-size:9px; color:#ff4060; }
+  .dev { position:absolute; top:7px; right:8px; font-family:var(--mono); font-size:9px; color:#cfd6dd; }
+  .br { position:absolute; width:16px; height:16px; border:2px solid var(--accent); }
+  .br.tl{top:12px;left:12px;border-right:0;border-bottom:0} .br.tr{top:12px;right:12px;border-left:0;border-bottom:0}
+  .br.bl{bottom:12px;left:12px;border-right:0;border-top:0} .br.brr{bottom:12px;right:12px;border-left:0;border-top:0}
+  .meta { display:flex; gap:6px; align-items:center; margin-top:8px; }
+  .nm { font-size:11px; } .st { font-family:var(--mono); font-size:9.5px; color:var(--text-muted); }
+  .btn { font-size:11px; padding:5px 10px; border:1px solid var(--border); border-radius:7px; background:var(--surface); color:var(--text); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="cap">empty — dropzone</div>
+    <div class="drop"><div class="cta"><span class="up">⬆</span><b>Upload Ray-Ban clip</b><span class="sub">drag &amp; drop or click · .mp4 / .mov</span></div></div>
+  </div>
+  <div class="wrap">
+    <div class="cap">loaded — preview (sampling)</div>
+    <div class="preview">
+      <div class="bottle"></div><span class="rec">● REC</span><span class="dev">RAY-BAN META</span>
+      <span class="br tl"></span><span class="br tr"></span><span class="br bl"></span><span class="br brr"></span>
+    </div>
+    <div class="meta"><span class="nm">adl_clip_0142.mp4</span><span class="st">14.2 MB · 7.1s · ✓ test_vids/</span><button class="btn">Replace clip</button></div>
+  </div>
+</body>
+</html>

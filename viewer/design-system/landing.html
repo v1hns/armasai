@@ -1,0 +1,106 @@
+<!-- @dsCard group="Landing" name="Pipeline Landing (full composition)" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ARMASAI · Landing</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#0a0a0f; --surface:#111118; --surface2:#1a1a24; --border:#2a2a3a; --accent:#00d4ff; --accent2:#7c3aed; --text:#e8e8f0; --text-muted:#6b6b80; --success:#22c55e; --warning:#f59e0b; --font:'Inter',sans-serif; --mono:'JetBrains Mono',monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); font-family:var(--font); color:var(--text); }
+  .demo { width:1280px; height:800px; display:flex; flex-direction:column;
+    background:radial-gradient(900px 500px at 80% -10%,rgba(124,58,237,.10),transparent 60%),radial-gradient(700px 500px at 0% 110%,rgba(0,212,255,.08),transparent 55%),var(--bg); }
+  /* header */
+  .hd { display:flex; align-items:center; gap:24px; padding:12px 22px; border-bottom:1px solid var(--border); }
+  .logo { font-size:24px; color:var(--accent); }
+  .ttl { font-weight:700; letter-spacing:.14em; font-size:14px; } .sub { font-size:10.5px; color:var(--text-muted); }
+  .flow { margin:0 auto; font-family:var(--mono); font-size:12px; color:var(--text-muted); } .flow b{color:var(--accent);font-weight:400}
+  .acts { display:flex; gap:9px; align-items:center; }
+  .btn { font-size:12px; font-weight:500; padding:6px 12px; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text); }
+  .btn.p { background:linear-gradient(135deg,var(--accent2),var(--accent)); border:none; color:#fff; font-weight:600; }
+  .prog { width:100px; height:23px; border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; position:relative; overflow:hidden; }
+  .prog i { position:absolute; left:0; top:0; bottom:0; width:50%; background:linear-gradient(90deg,var(--accent2),var(--accent)); opacity:.35; }
+  /* rail */
+  .rail { display:flex; align-items:center; padding:12px 22px; border-bottom:1px solid var(--border); gap:0; }
+  .chip { flex:1; display:flex; align-items:center; gap:9px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
+  .chip.run { border-color:var(--accent); box-shadow:0 0 18px rgba(0,212,255,.18); } .chip.done { border-color:#1f4a3a; } .chip.pend { border-style:dashed; }
+  .ci { font-size:17px; } .cn { font-size:12px; font-weight:600; } .ce { font-family:var(--mono); font-size:9px; color:var(--accent); }
+  .cb { flex:1; min-width:0; display:flex; flex-direction:column; }
+  .dot { width:9px; height:9px; border-radius:50%; } .dot.i{background:#2a2a3a} .dot.r{background:var(--accent)} .dot.d{background:var(--success)}
+  .conn { width:24px; display:flex; justify-content:center; } .conn i { width:16px; height:2px; background:var(--border); border-radius:2px; } .conn.a i{ background:linear-gradient(90deg,var(--accent),var(--accent2)); }
+  .pb { font-family:var(--mono); font-size:8px; color:var(--warning); border:1px solid rgba(245,158,11,.4); background:rgba(245,158,11,.08); border-radius:4px; padding:1px 4px; }
+  /* body */
+  .body { flex:1; display:flex; gap:16px; padding:16px 22px; min-height:0; }
+  .left { width:390px; display:flex; flex-direction:column; gap:14px; }
+  .right { flex:1; display:flex; gap:14px; }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; }
+  .ph { display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; margin-bottom:10px; }
+  .tag { font-family:var(--mono); font-size:9.5px; color:var(--accent); background:rgba(0,212,255,.08); border:1px solid rgba(0,212,255,.3); padding:2px 7px; border-radius:4px; }
+  .pov { aspect-ratio:16/9; border-radius:8px; background:linear-gradient(160deg,#1a1622,#0c0c12); border:1px solid var(--border); position:relative; }
+  .pov .bottle { position:absolute; left:46%; bottom:38%; width:13%; height:34%; background:linear-gradient(90deg,#2a6a78,#3fb6c8,#2a6a78); border-radius:6px; }
+  .pov .rec { position:absolute; top:7px; left:8px; font-family:var(--mono); font-size:9px; color:#ff4060; }
+  .detail { flex:1; }
+  .srow { display:flex; justify-content:space-between; padding:6px 8px; border-radius:6px; }
+  .srow:nth-child(odd){ background:rgba(255,255,255,.015); }
+  .sk { font-size:11.5px; color:var(--text-muted); } .sv { font-family:var(--mono); font-size:11.5px; }
+  .cad { flex:1; border:1px solid var(--border); border-radius:14px; position:relative; background:radial-gradient(circle at 50% 40%,#12121c,#0a0a0f); display:flex; align-items:center; justify-content:center; }
+  .cad .tag2 { position:absolute; top:12px; left:14px; font-family:var(--mono); font-size:10px; color:var(--accent); background:rgba(0,212,255,.08); border:1px solid rgba(0,212,255,.3); padding:3px 9px; border-radius:5px; }
+  .arm { width:60px; display:flex; flex-direction:column; align-items:center; }
+  .seg { background:linear-gradient(90deg,#0d1117,#222); border:1px solid #333; border-radius:8px; margin:2px 0; }
+  .joint { width:26px; height:26px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px rgba(0,212,255,.4); margin:2px 0; }
+  .cadside { width:230px; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; display:flex; flex-direction:column; }
+  .pl { display:flex; align-items:center; gap:10px; padding:7px 6px; border-radius:7px; font-size:12px; opacity:.5; }
+  .pl.done{opacity:1} .pl.bld{opacity:1;background:rgba(0,212,255,.07)}
+  .pd { width:8px; height:8px; border-radius:50%; background:var(--border); } .pl.done .pd{background:var(--success)} .pl.bld .pd{background:var(--accent)}
+  .pn { font-family:var(--mono); font-size:9.5px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="demo">
+    <div class="hd">
+      <span class="logo">⬡</span><div><div class="ttl">ARMASAI</div><div class="sub">Multi-Agent Prosthesis Pipeline</div></div>
+      <div class="flow">Ray-Ban clip <b>→</b> Gemini perception <b>→</b> design <b>→</b> CAD</div>
+      <div class="acts"><div class="prog"><i></i><span>50%</span></div><button class="btn">Reset</button><button class="btn p">▶ Run pipeline</button></div>
+    </div>
+    <div class="rail">
+      <div class="chip done"><span class="ci">🕶</span><span class="cb"><span class="cn">Capture</span><span class="ce">ADL clip</span></span><span class="dot d"></span></div>
+      <div class="conn a"><i></i></div>
+      <div class="chip done"><span class="ci">👁</span><span class="cb"><span class="cn">Perception</span><span class="ce">ProblemSpec</span></span><span class="dot d"></span></div>
+      <div class="conn a"><i></i></div>
+      <div class="chip run"><span class="ci">🦾</span><span class="cb"><span class="cn">Design</span><span class="ce">DesignParams</span></span><span class="dot r"></span></div>
+      <div class="conn"><i></i></div>
+      <div class="chip pend"><span class="ci">🧪</span><span class="cb"><span class="cn">Simulation</span><span class="ce">EvalResult</span></span><span class="pb">PH</span></div>
+      <div class="conn"><i></i></div>
+      <div class="chip pend"><span class="ci">🎮</span><span class="cb"><span class="cn">Policy</span><span class="ce">PolicyArtifact</span></span><span class="pb">PH</span></div>
+      <div class="conn"><i></i></div>
+      <div class="chip"><span class="ci">⬡</span><span class="cb"><span class="cn">CAD</span><span class="ce">STL</span></span><span class="dot i"></span></div>
+    </div>
+    <div class="body">
+      <div class="left">
+        <div class="panel"><div class="ph"><span>🕶 Ray-Ban input</span><span class="tag">gemini</span></div><div class="pov"><div class="bottle"></div><span class="rec">● REC</span></div></div>
+        <div class="panel detail"><div class="ph"><span>🦾 Design Agent</span><span class="tag">DesignParams</span></div>
+          <div class="srow"><span class="sk">Mount frame</span><span class="sv">torso_left</span></div>
+          <div class="srow"><span class="sk">Upper arm</span><span class="sv">30.0 cm</span></div>
+          <div class="srow"><span class="sk">Forearm</span><span class="sv">26.0 cm</span></div>
+          <div class="srow"><span class="sk">Grip width</span><span class="sv">8.0 cm</span></div>
+          <div class="srow"><span class="sk">Joint stiffness</span><span class="sv">1.1</span></div>
+        </div>
+      </div>
+      <div class="right">
+        <div class="cad"><span class="tag2">CAD OUTPUT · "tearing paper"</span>
+          <div class="arm"><div class="seg" style="width:46px;height:24px"></div><div class="seg" style="width:18px;height:90px"></div><div class="joint"></div><div class="seg" style="width:16px;height:80px"></div><div class="seg" style="width:34px;height:30px"></div></div>
+        </div>
+        <div class="cadside">
+          <div class="pl done"><span class="pd"></span><div>Shoulder socket<div class="pn">mount · torso_left</div></div></div>
+          <div class="pl done"><span class="pd"></span><div>Upper-arm tube<div class="pn">carbon · 30 cm</div></div></div>
+          <div class="pl bld"><span class="pd"></span><div>Elbow joint<div class="pn">hinge · k=1.1</div></div></div>
+          <div class="pl"><span class="pd"></span><div>Forearm tube<div class="pn">carbon · 26 cm</div></div></div>
+          <div class="pl"><span class="pd"></span><div>Two-jaw gripper<div class="pn">8 cm aperture</div></div></div>
+          <button class="btn p" style="margin-top:auto">⬇ Export STL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
