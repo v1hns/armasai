@@ -140,7 +140,8 @@ function Arm({ params, revealed }) {
   const yWrist = y - wristH / 2; y -= wristH
   const yGrip = y - gripH / 2; y -= gripH
   const total = -y
-  const centerOff = total / 2 - socketH / 2
+  // Center the arm's geometric centroid on the origin so it frames cleanly.
+  const centerOff = total / 2
 
   return (
     <group ref={ref} position={[0, centerOff, 0]}>
@@ -168,19 +169,31 @@ function Arm({ params, revealed }) {
 }
 
 export default function CadAssembly({ params, revealed }) {
+  // Approximate model height (same stack as <Arm>) so the camera frames any
+  // design size and the model stays centered.
+  const r = (params.arm_radius || 0.03) * 100
+  const total = r * 2 + (params.upper_arm_len || 0.3) * 100 + r * 2.6 +
+    (params.forearm_len || 0.26) * 100 + r * 2.5 + r * 2.2
+  const dist = total * 1.75
+  const camPos = [dist * 0.52, dist * 0.23, dist * 0.82] // normalized-ish view dir
+  const floorY = -total / 2 - 4
+
   return (
     <Canvas shadows gl={{ antialias: true, alpha: true }} style={{ width: '100%', height: '100%' }}>
-      <PerspectiveCamera makeDefault position={[55, 20, 75]} fov={38} near={0.1} far={500} />
-      <OrbitControls enableDamping dampingFactor={0.08} minDistance={30} maxDistance={180} target={[0, 0, 0]} enablePan={false} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[40, 60, 30]} intensity={1.8} castShadow shadow-mapSize={[1024, 1024]} />
-      <directionalLight position={[-30, 10, -20]} intensity={0.4} color="#7c3aed" />
-      <pointLight position={[0, 0, 30]} intensity={0.7} color="#00d4ff" distance={140} />
-      <Environment preset="city" />
-      <Grid position={[0, -38, 0]} args={[200, 200]} cellSize={5} cellThickness={0.5} sectionSize={20} sectionThickness={1} cellColor="#1a1a2e" sectionColor="#2a2a40" fadeDistance={170} fadeStrength={1} infiniteGrid />
+      <PerspectiveCamera makeDefault position={camPos} fov={38} near={0.1} far={dist * 6} />
+      <OrbitControls enableDamping dampingFactor={0.08} minDistance={total * 0.6} maxDistance={dist * 2.5} target={[0, 0, 0]} enablePan={false} />
+      <ambientLight intensity={0.7} />
+      <hemisphereLight intensity={0.6} groundColor="#0a0a0f" />
+      <directionalLight position={[40, 60, 30]} intensity={2.2} castShadow shadow-mapSize={[1024, 1024]} />
+      <directionalLight position={[-30, 10, -20]} intensity={0.6} color="#7c3aed" />
+      <pointLight position={[0, 0, 30]} intensity={0.9} color="#00d4ff" distance={160} />
+      {/* Environment isolated in its own boundary so a slow/failed HDRI load
+          can never blank the model. The Arm renders regardless. */}
       <Suspense fallback={null}>
-        <Arm params={params} revealed={revealed} />
+        <Environment preset="city" />
       </Suspense>
+      <Grid position={[0, floorY, 0]} args={[400, 400]} cellSize={5} cellThickness={0.5} sectionSize={20} sectionThickness={1} cellColor="#1a1a2e" sectionColor="#2a2a40" fadeDistance={dist * 2} fadeStrength={1} infiniteGrid />
+      <Arm params={params} revealed={revealed} />
     </Canvas>
   )
 }

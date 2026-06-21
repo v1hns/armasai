@@ -193,6 +193,8 @@ assets/objects/
 assets/scenes/scenario_*.png
 # Live fleet trajectory stream (regenerated each run by train_live --fleet)
 webdemo/assets/live/fleet.json
+# Trained-policy eval sidecars (regenerated on training)
+assets/policies/*.json
 
 # Recon pipeline outputs (heavy / machine-specific): keep code + room.xml, drop binaries
 scripts/recon/frames/

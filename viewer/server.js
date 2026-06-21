@@ -3,6 +3,7 @@ import cors from 'cors'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
+import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenAI } from '@google/genai'
@@ -72,6 +73,15 @@ the other compensates. Read the functional situation from these sequential video
 - Name the SPECIFIC action: concrete object + precise verb (e.g. "unscrewing a bottle cap",
   "tearing a sheet of paper", "pouring water into a cup"). Do not default to any action.
 
+Reason through the action internally before answering:
+- What object is in the working hand, and what is the hand DOING to it
+  (twisting, tearing, folding, lifting, pouring, cutting)?
+- With ONE hand, the person BRACES objects against a surface (sill, table, lap, body) to
+  replace the missing hand. A hand pressing paper onto a sill is almost certainly TEARING or
+  FOLDING it, NOT wiping the surface. Report the intended task, not the incidental contact.
+- Estimate residual_anthropometrics (the intact arm, in meters) so the prosthesis can be sized
+  to MIRROR the contralateral limb; use the visible arm for scale or assume adult proportions.
+
 Respond with ONLY a JSON object of this exact shape:
 {
   "primary_action": "<specific object + verb>",
@@ -103,13 +113,16 @@ app.post('/api/analyze-frames', async (req, res) => {
   try {
     const parts = [
       { text: PERCEPTION_PROMPT },
-      ...frames.slice(0, 8).map((b64) => ({
+      // 12 frames is the action-recognition sweet spot (bench: 8 misses the key moment).
+      ...frames.slice(0, 12).map((b64) => ({
         inlineData: { mimeType: 'image/jpeg', data: b64.replace(/^data:[^,]+,/, '') },
       })),
     ]
     const result = await ai.models.generateContent({
       model: process.env.GEMMA_MODEL || 'gemini-2.5-flash',
       contents: [{ role: 'user', parts }],
+      // temperature=0 for reproducible reads (matches the Python pipeline).
+      config: { temperature: 0 },
     })
     const text = result.text ?? result.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? ''
     const detection = extractJson(text)
@@ -119,6 +132,117 @@ app.post('/api/analyze-frames', async (req, res) => {
   } catch (err) {
     console.error('analyze-frames:', err.message)
     res.status(502).json({ source: 'error', error: err.message })
+  }
+})
+
+// ── Real EvalResult: DesignParams → fixed-seed MuJoCo verifier rollouts ──────
+const REPO_ROOT = path.resolve(__dirname, '..')
+const EVAL_SCRIPT = path.join(REPO_ROOT, 'scripts', 'evaluate_design.py')
+const APP_BRIDGE_SCRIPT = path.join(REPO_ROOT, 'scripts', 'app_bridge.py')
+const VENV_PYTHON = path.join(REPO_ROOT, '.venv', 'bin', 'python')
+
+function runPythonJson(script, payload, timeoutMs = 30_000, args = []) {
+  return new Promise((resolve, reject) => {
+    const python = process.env.ARMASAI_PYTHON || (fs.existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python3')
+    const child = spawn(python, [script, ...args], { cwd: REPO_ROOT, stdio: ['pipe', 'pipe', 'pipe'] })
+    let stdout = '', stderr = ''
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(new Error('evaluation timed out'))
+    }, timeoutMs)
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+    child.on('error', (err) => { clearTimeout(timer); reject(err) })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (code !== 0) return reject(new Error(stderr.trim() || `evaluation exited with code ${code}`))
+      try { resolve(JSON.parse(stdout)) }
+      catch { reject(new Error('evaluation returned invalid JSON')) }
+    })
+    child.stdin.end(JSON.stringify(payload))
+  })
+}
+
+app.post('/api/evaluate-design', async (req, res) => {
+  const { problem, design, task_id: taskId } = req.body || {}
+  if (!design || typeof design !== 'object') {
+    return res.status(400).json({ error: 'DesignParams are required' })
+  }
+  try {
+    const result = await runPythonJson(EVAL_SCRIPT, {
+      problem: problem || {},
+      design,
+      task_id: taskId || 'adl_task_v1',
+      seeds: [0, 1, 2],
+      n_targets: 2,
+      seconds: 1.5,
+    })
+    res.json(result)
+  } catch (err) {
+    console.error('evaluate-design:', err.message)
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.post('/api/analyze-clip', async (req, res) => {
+  const requested = String(req.body?.clip_path || '')
+  const clipPath = path.resolve(REPO_ROOT, requested)
+  if (!requested || !clipPath.startsWith(CLIP_DIR + path.sep) || !fs.existsSync(clipPath)) {
+    return res.status(400).json({ error: 'A saved clip under test_vids/ is required' })
+  }
+  try {
+    res.json(await runPythonJson(
+      APP_BRIDGE_SCRIPT, { clip_path: clipPath }, 30_000, ['perception'],
+    ))
+  } catch (err) {
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.post('/api/derive-design', async (req, res) => {
+  try {
+    res.json(await runPythonJson(
+      APP_BRIDGE_SCRIPT, { problem: req.body?.problem || {} }, 15_000, ['design'],
+    ))
+  } catch (err) {
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.post('/api/build-policy', async (req, res) => {
+  if (!req.body?.design) return res.status(400).json({ error: 'DesignParams are required' })
+  try {
+    res.json(await runPythonJson(APP_BRIDGE_SCRIPT, {
+      problem: req.body.problem || {}, design: req.body.design, name: req.body.name || 'policy',
+    }, 15_000, ['policy']))
+  } catch (err) {
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.post('/api/build-cad', async (req, res) => {
+  if (!req.body?.design) return res.status(400).json({ error: 'DesignParams are required' })
+  try {
+    res.json(await runPythonJson(APP_BRIDGE_SCRIPT, {
+      design: req.body.design, name: req.body.name || 'candidate',
+    }, 15_000, ['cad']))
+  } catch (err) {
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.post('/api/export-stl', async (req, res) => {
+  if (!req.body?.design) return res.status(400).json({ error: 'DesignParams are required' })
+  try {
+    const artifact = await runPythonJson(APP_BRIDGE_SCRIPT, {
+      design: req.body.design, name: req.body.name || 'candidate',
+    }, 15_000, ['cad'])
+    const artifactPath = path.resolve(REPO_ROOT, artifact.path)
+    const stlRoot = path.resolve(REPO_ROOT, 'assets', 'stl')
+    if (!artifactPath.startsWith(stlRoot + path.sep)) throw new Error('invalid artifact path')
+    res.download(artifactPath, artifact.file)
+  } catch (err) {
+    res.status(502).json({ error: err.message })
   }
 })
 
@@ -179,6 +303,16 @@ app.post('/api/design', async (req, res) => {
   res.setHeader('Connection', 'keep-alive')
 
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      const params = await runPythonJson(APP_BRIDGE_SCRIPT, {
+        problem: { primary_action: message || 'general assistive use', tasks: ['reach', 'grasp'] },
+      }, 15_000, ['design'])
+      sendSSE(res, {
+        type: 'done',
+        fullText: JSON.stringify({ description: 'Generated by the local Python DesignAgent.', params }),
+      })
+      return res.end()
+    }
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-6',
       max_tokens: 800,
@@ -209,6 +343,27 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Connection', 'keep-alive')
 
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      const lower = String(message || '').toLowerCase()
+      const updates = {}
+      if (lower.includes('titanium')) updates.material = 'titanium'
+      if (lower.includes('carbon')) updates.material = 'carbon_fiber'
+      const grip = lower.match(/grip(?: width)?\D+(\d+(?:\.\d+)?)\s*(cm|mm|m)?/)
+      if (grip) {
+        const value = Number(grip[1])
+        updates.grip_width = grip[2] === 'mm' ? value / 1000 : grip[2] === 'm' ? value : value / 100
+      }
+      sendSSE(res, {
+        type: 'done',
+        fullText: JSON.stringify({
+          reply: Object.keys(updates).length
+            ? 'Updated the local design parameters.'
+            : 'The local design agent is available. Specify a material or grip width to refine the model.',
+          params: Object.keys(updates).length ? updates : null,
+        }),
+      })
+      return res.end()
+    }
     const stream = await client.messages.stream({
       model: 'claude-sonnet-4-6',
       max_tokens: 512,
