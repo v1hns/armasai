@@ -713,11 +713,12 @@ async function initViewer() {
     key.position.set(2, 4, 3);
     key.castShadow = true;
     scene.add(key);
-    scene.add(
-      Object.assign(new THREE.DirectionalLight(0x99bbff, 0.6), {
-        position: new THREE.Vector3(-2, 2, -1),
-      }),
-    );
+    // THREE Object3D.position is read-only (mutate, never reassign) — Object.assign
+    // onto it throws "Cannot assign to read only property 'position'" in strict-mode
+    // ES modules and aborts initViewer, leaving the viewer blank. Set it like live.js.
+    const fill = new THREE.DirectionalLight(0x99bbff, 0.6);
+    fill.position.set(-2, 2, -1);
+    scene.add(fill);
 
     const wrap = document.getElementById("viewer-wrap");
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
