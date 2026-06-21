@@ -1,50 +1,27 @@
 """Morphology design agent — Benji's owned module.
 
-Responsibilities: ProblemSpec + sim feedback -> MorphologySpec candidates,
-spatial/reachability validation, candidate comparison.
+Responsibilities: ProblemSpec + sim feedback -> DesignParams candidates with
+explicit kinematic chains, spatial/reachability validation, and candidate ranking.
 
-MorphologySpec / EvalResult dataclasses live here until the coordinator
-(Vihaan) adds them to prosthesis_rl/contracts/schemas.py.
+DesignParams.links (LinkDef chain) IS the MorphologySpec — the coordinator
+added JointDef/LinkDef/default_arm_chain to contracts so no local duplicates.
+EvalResult stays local until the coordinator adds it to contracts.
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
-from prosthesis_rl.contracts import ProblemSpec, SimFeedback
+from prosthesis_rl.contracts import (
+    DesignParams,
+    JointDef,
+    LinkDef,
+    ProblemSpec,
+    SimFeedback,
+)
 
 
-# ── Pending contract additions (propose to coordinator) ───────────────────────
-
-@dataclass
-class LinkSpec:
-    name: str
-    length_m: float
-    mass_kg: float
-
-
-@dataclass
-class JointSpec:
-    name: str
-    type: str  # "hinge" | "ball"
-    limits_rad: tuple[float, float] = field(default_factory=lambda: (0.0, 0.0))
-
-
-@dataclass
-class ActuatorSpec:
-    joint: str
-    torque_limit_nm: float
-
-
-@dataclass
-class MorphologySpec:
-    """Simulated limb morphology. Migrate to contracts once coordinator adds it."""
-    mount_frame: str
-    links: list[LinkSpec] = field(default_factory=list)
-    joints: list[JointSpec] = field(default_factory=list)
-    actuators: list[ActuatorSpec] = field(default_factory=list)
-
+# ── Pending contract addition — propose to coordinator ────────────────────────
 
 @dataclass
 class EvalResult:
@@ -58,126 +35,118 @@ class EvalResult:
     video_path: str = ""
 
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-
-_VALID_JOINT_TYPES = {"hinge", "ball"}
-_DEFAULT_UPPER_ARM_M = 0.30
-_DEFAULT_FOREARM_M = 0.26
-_DEFAULT_UPPER_MASS_KG = 0.80
-_DEFAULT_FOREARM_MASS_KG = 0.60
-_DEFAULT_SHOULDER_TORQUE_NM = 20.0
-_DEFAULT_ELBOW_TORQUE_NM = 15.0
-
-
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 class DesignAgent:
-    """ProblemSpec + sim feedback -> MorphologySpec candidates with spatial validation."""
+    """ProblemSpec + sim feedback -> DesignParams candidates with spatial validation.
+
+    Returns DesignParams with an explicit links chain so the MJCF builder,
+    verifier, and RL env all see the same kinematic tree.
+    """
 
     def propose(
         self,
         problem: ProblemSpec,
         feedback: SimFeedback | None = None,
-    ) -> tuple[MorphologySpec, dict[str, float]]:
-        """Return a single validated MorphologySpec informed by problem and feedback."""
-        upper_m = _DEFAULT_UPPER_ARM_M
-        forearm_m = _DEFAULT_FOREARM_M
-        shoulder_lim = (0.0, math.radians(180.0))
-        elbow_lim = (0.0, math.radians(145.0))
+    ) -> tuple[DesignParams, dict[str, float]]:
+        """Return a validated DesignParams informed by problem constraints and feedback."""
+        upper_m = 0.30
+        forearm_m = 0.26
+        grip_w = max(0.06, min(0.12, problem.constraints.grip_capacity * 0.15 + 0.06))
+
+        elbow_lo, elbow_hi = 0.0, 130.0    # degrees — matches default_arm_chain
+        wrist_lo, wrist_hi = -60.0, 60.0
+        stiffness = 1.0
 
         if feedback is not None:
             if feedback.breakdown.rom_penalty > 0.1:
-                shoulder_lim = (0.0, math.radians(200.0))
-                elbow_lim = (0.0, math.radians(160.0))
+                elbow_hi = min(160.0, elbow_hi + 20.0)
+                wrist_hi = min(80.0, wrist_hi + 10.0)
+                wrist_lo = max(-80.0, wrist_lo - 10.0)
             if feedback.breakdown.collision_penalty > 0.1:
-                upper_m = max(0.20, upper_m - 0.02)
-                forearm_m = max(0.18, forearm_m - 0.02)
+                upper_m = max(0.22, upper_m - 0.02)
+                forearm_m = max(0.20, forearm_m - 0.02)
             if feedback.reward < 0.25:
                 forearm_m = min(0.34, forearm_m + 0.02)
+            if feedback.breakdown.energy_penalty > 0.15:
+                stiffness = max(0.7, stiffness - 0.2)
 
-        mount = self._mount_frame(problem)
-        spec = self._build_spec(upper_m, forearm_m, shoulder_lim, elbow_lim, mount)
-        errors = self.validate(spec, self._task_reach_m(problem))
+        side = problem.affected_side or "right"
+        mount = f"torso_{side}" if side in {"left", "right"} else "torso_right"
+
+        params = self._build_params(
+            upper_m, forearm_m, grip_w, stiffness,
+            elbow=(elbow_lo, elbow_hi), wrist=(wrist_lo, wrist_hi),
+            mount_frame=mount,
+        )
+        errors = self.validate(params, self._task_reach_m(problem))
         if errors:
             raise ValueError(f"Proposed morphology failed validation: {errors}")
 
         control_hints: dict[str, float] = {"ik_weight": 1.0, "grip_force_target": 0.35}
-        return spec, control_hints
+        return params, control_hints
 
     def propose_candidates(
         self,
         problem: ProblemSpec,
         feedback: SimFeedback | None = None,
         n: int = 2,
-    ) -> list[tuple[MorphologySpec, dict[str, float]]]:
-        """Generate n morphology candidates with systematic dimensional variation."""
+    ) -> list[tuple[DesignParams, dict[str, float]]]:
+        """Generate n candidates with systematic dimensional variation."""
         base, base_hints = self.propose(problem, feedback)
-        candidates: list[tuple[MorphologySpec, dict[str, float]]] = [(base, base_hints)]
+        candidates: list[tuple[DesignParams, dict[str, float]]] = [(base, base_hints)]
+        hints: dict[str, float] = {"ik_weight": 1.0, "grip_force_target": 0.35}
 
         variations = [
-            # longer / more ROM
-            (0.32, 0.28, (0.0, math.radians(190.0)), (0.0, math.radians(155.0))),
-            # shorter / compact
-            (0.26, 0.22, (0.0, math.radians(160.0)), (0.0, math.radians(130.0))),
-            # extended reach
-            (0.34, 0.30, (0.0, math.radians(180.0)), (0.0, math.radians(145.0))),
+            dict(upper_m=0.32, forearm_m=0.28, elbow=(0.0, 145.0), wrist=(-70.0, 70.0)),
+            dict(upper_m=0.26, forearm_m=0.22, elbow=(0.0, 120.0), wrist=(-50.0, 50.0)),
+            dict(upper_m=0.34, forearm_m=0.30, elbow=(0.0, 135.0), wrist=(-60.0, 60.0)),
         ]
         reach = self._task_reach_m(problem)
-        mount = self._mount_frame(problem)
-        for upper_m, forearm_m, sh_lim, el_lim in variations[: n - 1]:
-            spec = self._build_spec(upper_m, forearm_m, sh_lim, el_lim, mount)
-            if not self.validate(spec, reach):
-                hints: dict[str, float] = {"ik_weight": 1.0, "grip_force_target": 0.35}
-                candidates.append((spec, hints))
+        for v in variations[: n - 1]:
+            grip_w = max(0.06, min(0.12, problem.constraints.grip_capacity * 0.15 + 0.06))
+            params = self._build_params(
+                v["upper_m"], v["forearm_m"], grip_w, 1.0,
+                elbow=v["elbow"], wrist=v["wrist"],
+            )
+            if not self.validate(params, reach):
+                candidates.append((params, hints))
             if len(candidates) >= n:
                 break
 
         return candidates
 
-    def validate(self, spec: MorphologySpec, task_reach_m: float = 0.0) -> list[str]:
-        """Return a list of validation errors; empty means the spec is valid.
+    def validate(self, params: DesignParams, task_reach_m: float = 0.0) -> list[str]:
+        """Return validation errors (empty = valid).
 
-        Checks: positive link dimensions, valid joint types and limits,
-        actuator coverage, and whether total reach meets the task requirement.
+        Checks: positive link geometry, valid joint ranges, total reach vs task,
+        and that each joint name is unique with a non-zero axis.
         """
         errors: list[str] = []
-        joint_names = {j.name for j in spec.joints}
-        actuated = {a.joint for a in spec.actuators}
+        total_reach = 0.0
+        seen_joints: set[str] = set()
 
-        for link in spec.links:
-            if link.length_m <= 0:
-                errors.append(
-                    f"Link '{link.name}' has non-positive length {link.length_m}"
-                )
-            if link.mass_kg <= 0:
-                errors.append(
-                    f"Link '{link.name}' has non-positive mass {link.mass_kg}"
-                )
+        for link in params.links:
+            if link.length <= 0:
+                errors.append(f"Link '{link.name}' has non-positive length {link.length}")
+            if link.radius <= 0:
+                errors.append(f"Link '{link.name}' has non-positive radius {link.radius}")
+            total_reach += link.length
 
-        for joint in spec.joints:
-            if joint.type not in _VALID_JOINT_TYPES:
-                errors.append(
-                    f"Joint '{joint.name}' has invalid type '{joint.type}'"
-                )
-            lo, hi = joint.limits_rad
-            if lo >= hi:
-                errors.append(
-                    f"Joint '{joint.name}' limits [{lo:.3f}, {hi:.3f}] invalid (lower >= upper)"
-                )
+            for joint in link.joints:
+                lo, hi = joint.range_deg
+                if lo >= hi:
+                    errors.append(
+                        f"Joint '{joint.name}' range [{lo:.1f}, {hi:.1f}] deg invalid (lower >= upper)"
+                    )
+                if joint.type not in {"hinge", "slide"}:
+                    errors.append(f"Joint '{joint.name}' has unknown type '{joint.type}'")
+                if all(abs(a) < 1e-9 for a in joint.axis):
+                    errors.append(f"Joint '{joint.name}' has zero axis vector")
+                if joint.name in seen_joints:
+                    errors.append(f"Duplicate joint name '{joint.name}'")
+                seen_joints.add(joint.name)
 
-        for act in spec.actuators:
-            if act.joint not in joint_names:
-                errors.append(f"Actuator references unknown joint '{act.joint}'")
-            if act.torque_limit_nm <= 0:
-                errors.append(
-                    f"Actuator for '{act.joint}' has non-positive torque {act.torque_limit_nm}"
-                )
-
-        for jname in joint_names:
-            if jname not in actuated:
-                errors.append(f"Joint '{jname}' has no actuator")
-
-        total_reach = sum(link.length_m for link in spec.links)
         if total_reach < task_reach_m:
             errors.append(
                 f"Total arm reach {total_reach:.3f} m < required {task_reach_m:.3f} m"
@@ -187,7 +156,7 @@ class DesignAgent:
 
     def compare(
         self,
-        candidates: list[MorphologySpec],
+        candidates: list[DesignParams],
         eval_results: list[EvalResult],
     ) -> tuple[int, str]:
         """Pick best candidate by (mean_reward, success_rate, -collision_rate).
@@ -223,31 +192,40 @@ class DesignAgent:
         return float(problem.constraints.rom.get("reach_m", 0.5))
 
     @staticmethod
-    def _mount_frame(problem: ProblemSpec) -> str:
-        """Mount the prosthesis on the affected side from perception."""
-        side = getattr(problem, "affected_side", "") or "right"
-        return f"torso_{side}" if side in {"left", "right"} else "torso_right"
-
-    @staticmethod
-    def _build_spec(
+    def _build_params(
         upper_m: float,
         forearm_m: float,
-        shoulder_lim: tuple[float, float],
-        elbow_lim: tuple[float, float],
+        grip_w: float,
+        stiffness: float,
+        *,
+        elbow: tuple[float, float] = (0.0, 130.0),
+        wrist: tuple[float, float] = (-60.0, 60.0),
         mount_frame: str = "torso_right",
-    ) -> MorphologySpec:
-        return MorphologySpec(
+    ) -> DesignParams:
+        links = (
+            LinkDef(
+                name="upper_arm", length=upper_m, radius=0.025,
+                joints=(
+                    JointDef("shoulder_flex", (0, 1, 0), (-90.0, 120.0)),
+                    JointDef("shoulder_abduct", (1, 0, 0), (-60.0, 90.0)),
+                ),
+            ),
+            LinkDef(
+                name="forearm", length=forearm_m, radius=0.022,
+                joints=(JointDef("elbow", (0, 1, 0), elbow),),
+            ),
+            LinkDef(
+                name="gripper", length=0.06, radius=max(0.015, grip_w / 2),
+                joints=(JointDef("wrist", (1, 0, 0), wrist),),
+                rgba=(0.85, 0.6, 0.2, 1.0),
+            ),
+        )
+        return DesignParams(
+            upper_arm_len=upper_m,
+            forearm_len=forearm_m,
+            joint_stiffness=stiffness,
+            grip_width=grip_w,
+            joint_limits={"elbow": elbow, "wrist": wrist},
+            links=links,
             mount_frame=mount_frame,
-            links=[
-                LinkSpec("upper", upper_m, _DEFAULT_UPPER_MASS_KG),
-                LinkSpec("forearm", forearm_m, _DEFAULT_FOREARM_MASS_KG),
-            ],
-            joints=[
-                JointSpec("shoulder_flexion", "hinge", shoulder_lim),
-                JointSpec("elbow_flexion", "hinge", elbow_lim),
-            ],
-            actuators=[
-                ActuatorSpec("shoulder_flexion", _DEFAULT_SHOULDER_TORQUE_NM),
-                ActuatorSpec("elbow_flexion", _DEFAULT_ELBOW_TORQUE_NM),
-            ],
         )
