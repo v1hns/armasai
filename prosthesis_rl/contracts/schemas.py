@@ -169,6 +169,46 @@ class SimFeedback:
         return json.dumps(asdict(self), indent=indent)
 
 
+@dataclass
+class OrchestrationAttempt:
+    """One design, CAD export, and verification pass."""
+
+    index: int
+    design: DesignParams
+    control_hints: dict[str, float]
+    artifact_path: str
+    feedback: SimFeedback
+
+
+@dataclass
+class OrchestrationResult:
+    """Inspectable outcome of an iterative design run."""
+
+    problem: ProblemSpec
+    attempts: list[OrchestrationAttempt]
+    best_attempt_index: int
+    stop_reason: str
+
+    def __post_init__(self) -> None:
+        if not self.attempts:
+            raise ValueError("an orchestration result requires at least one attempt")
+        if not 0 <= self.best_attempt_index < len(self.attempts):
+            raise ValueError("best_attempt_index must reference an attempt")
+
+    @property
+    def best_attempt(self) -> OrchestrationAttempt:
+        return self.attempts[self.best_attempt_index]
+
+    @property
+    def reward(self) -> float:
+        """Compatibility shortcut for score-only callers."""
+
+        return self.best_attempt.feedback.reward
+
+    def to_json(self, indent: int | None = None) -> str:
+        return json.dumps(asdict(self), indent=indent)
+
+
 # ── End-to-end pipeline contracts ─────────────────────────────────────────────
 # The runtime loop is: TaskSpec (intake) → DesignParams + SimSpec (build) →
 # PolicyArtifact (control) → EvalResult (evaluation). These mirror
