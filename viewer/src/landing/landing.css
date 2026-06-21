@@ -41,7 +41,7 @@
   border-bottom: 1px solid var(--line);
 }
 .lp-brand { display: flex; align-items: center; gap: 10px; }
-.lp-logo { font-size: 16px; color: var(--ink); }
+.lp-logo { width: 11px; height: 11px; background: var(--accent); display: inline-block; }
 .lp-wordmark { font-family: var(--mono); font-weight: 600; letter-spacing: 0.22em; font-size: 14px; }
 .lp-nav-links { display: flex; align-items: center; gap: 30px; }
 .lp-nav-links a {
@@ -87,7 +87,7 @@
 
 /* image slot — shows the image when present, a clean placeholder when not */
 .lp-img {
-  position: relative; width: 100%; border: 1px solid var(--line-strong); border-radius: 3px;
+  position: relative; width: 100%; border: 1px solid var(--line-strong); border-radius: 2px;
   background: var(--bg-panel); overflow: hidden; aspect-ratio: 16 / 7;
   display: flex; align-items: center; justify-content: center;
 }
@@ -138,7 +138,7 @@
 .lp-step-emit b { color: var(--ink); font-weight: 500; }
 
 /* ── Contracts strip ── */
-.lp-contracts { display: flex; align-items: stretch; gap: 0; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+.lp-contracts { display: flex; align-items: stretch; gap: 0; border: 1px solid var(--line-strong); border-radius: 2px; overflow: hidden; }
 .lp-contract { flex: 1; padding: 28px 26px; }
 .lp-contract + .lp-contract { border-left: 1px solid var(--line); }
 .lp-contract-name { font-family: var(--mono); font-size: 14px; font-weight: 600; margin-bottom: 12px; }

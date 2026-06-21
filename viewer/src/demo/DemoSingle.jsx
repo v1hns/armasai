@@ -53,6 +53,7 @@ export default function DemoSingle() {
   const [design, setDesign] = useState(null)
   const [evaluation, setEvaluation] = useState(null)
   const [policy, setPolicy] = useState(null)
+  const [reasons, setReasons] = useState({}) // AI-polished plain-English per stage
   const runId = useRef(0)
 
   const cadParams = design || detectionToDesign(SAMPLE)
@@ -61,7 +62,7 @@ export default function DemoSingle() {
   const reset = useCallback(() => {
     runId.current += 1
     setStatus({}); setRevealed(0); setRunning(false); setActive('capture')
-    setDetection(null); setDesign(null); setEvaluation(null); setPolicy(null)
+    setDetection(null); setDesign(null); setEvaluation(null); setPolicy(null); setReasons({})
   }, [])
 
   const taskId = (a) => `${(a || 'adl_task').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 28)}_v1`
@@ -81,6 +82,51 @@ export default function DemoSingle() {
       default: return null
     }
   }, [clip, detection, design, evaluation, policy, revealed, cadParams])
+
+  // Plain-English thought process per stage — the legible fallback that always works.
+  const reasonFor = useCallback((key) => {
+    const side = (s) => (s === 'left' || s === 'right') ? s : '—'
+    switch (key) {
+      case 'capture':
+        return clip?.url
+          ? 'Got a first-person clip. Everything below is worked out from this one video — no forms, no measurements.'
+          : 'Waiting on a first-person clip of a daily task. It’s the only input; everything else is derived from it.'
+      case 'perception':
+        if (!detection) return 'Watches the clip and figures out what the person is doing and which arm needs help.'
+        return `Saw the person ${detection.primary_action}. The ${side(detection.affected_side)} arm is the one to replace — the ${side(detection.residual_side)} arm is doing the work and compensating.`
+      case 'design':
+        if (!design) return 'Turns the problem into real prosthetic measurements.'
+        return `Designed an arm sized to match the person’s intact side: about ${(design.upper_arm_len * 100).toFixed(0)} cm upper arm, ${(design.forearm_len * 100).toFixed(0)} cm forearm, and ${design.dof} moving joints, mounted on the ${(design.mount_frame || '').includes('left') ? 'left' : 'right'}.`
+      case 'simulation':
+        if (!evaluation) return 'Tests the design in a physics simulator on the real task.'
+        return `Ran the design ${evaluation.num_rollouts ?? 'several'} times in physics. It completed the task ${Math.round((evaluation.success_rate || 0) * 100)}% of the time${evaluation.collision_rate ? `, with ${Math.round(evaluation.collision_rate * 100)}% of runs hitting a collision` : ''}.`
+      case 'policy':
+        return policy
+          ? `Built the controller that drives the arm through the motion${policy.success_rate != null ? ` (${Math.round(policy.success_rate * 100)}% success in sim)` : ''}.`
+          : 'Builds the controller that actually moves the arm through the task.'
+      case 'cad':
+        return revealed >= CAD_PARTS.length
+          ? `Assembled all ${CAD_PARTS.length} parts into a finished, printable arm — ready to export as an STL.`
+          : `Assembling the printable model part by part (${revealed}/${CAD_PARTS.length}).`
+      default: return ''
+    }
+  }, [clip, detection, design, evaluation, policy, revealed])
+
+  // Optional: upgrade the active stage's explanation with a quick Claude Haiku call.
+  useEffect(() => {
+    const data = outputFor(active)
+    if (!data || reasons[active]) return
+    let alive = true
+    fetch('/api/explain', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: active, data }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j?.text) setReasons((p) => ({ ...p, [active]: j.text })) })
+      .catch(() => {})
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, detection, design, evaluation, policy, revealed])
 
   const play = useCallback(async () => {
     runId.current += 1
@@ -158,14 +204,14 @@ export default function DemoSingle() {
     <div className="demo">
       <header className="demo-header">
         <div className="demo-brand" style={{ cursor: 'pointer' }} onClick={() => { window.location.hash = '' }} title="Back to home">
-          <span className="demo-logo">⬡</span>
+          <span className="demo-logo" />
           <div><div className="demo-title">SUPERHUMAN</div><div className="demo-sub">Prosthesis Pipeline · single clip</div></div>
         </div>
         <div className="demo-flow-label">Ray-Ban clip <span className="arrow">→</span> Gemini <span className="arrow">→</span> design <span className="arrow">→</span> MuJoCo <span className="arrow">→</span> CAD</div>
         <div className="demo-actions">
           <div className="demo-progress"><div className="demo-progress-bar" style={{ width: `${progress}%` }} /><span>{progress}%</span></div>
           <button className="btn" onClick={reset} disabled={!completed && !running}>Reset</button>
-          <button className="btn primary" onClick={play} disabled={running}>{running ? '● Running…' : '▶ Run pipeline'}</button>
+          <button className="btn primary" onClick={play} disabled={running}>{running ? 'Running…' : 'Run pipeline'}</button>
         </div>
       </header>
 
@@ -175,7 +221,6 @@ export default function DemoSingle() {
           return (
             <div className="rail-cell" key={stage.key}>
               <button className={`chip ${st} ${active === stage.key ? 'focus' : ''}`} onClick={() => setActive(stage.key)}>
-                <span className="chip-icon">{stage.icon}</span>
                 <span className="chip-body"><span className="chip-name">{stage.name}</span><span className="chip-emit">{stage.emits}</span></span>
                 <span className={`dot ${st}`} />
               </button>
@@ -192,12 +237,15 @@ export default function DemoSingle() {
       <div className="body">
         <section className="col-left">
           <div className="panel input-panel">
-            <div className="panel-head"><span>🕶 Ray-Ban input</span>{detection && <span className="src-tag">{detection.source}</span>}</div>
+            <div className="panel-head"><span>Ray-Ban input</span>{detection && <span className="src-tag">{detection.source}</span>}</div>
             <RayBanUpload clip={clip} onClip={setClip} sampling={status.perception === 'running'} />
           </div>
           <div className="panel detail-panel">
-            <div className="panel-head"><span>{activeStage?.icon} {activeStage?.name}</span><span className="emit-tag">{activeStage?.emits}</span></div>
-            <p className="detail-blurb">{activeStage?.blurb}</p>
+            <div className="panel-head"><span>{activeStage?.name}</span><span className="emit-tag">{activeStage?.emits}</span></div>
+            <div className="reasoning">
+              <span className="reasoning-k">What it figured out</span>
+              <p>{reasons[active] || reasonFor(active)}</p>
+            </div>
             <SpecView data={activeOut} contract={activeStage?.emits} />
           </div>
         </section>
@@ -215,7 +263,7 @@ export default function DemoSingle() {
                 return (
                   <li key={p.key} className={done ? 'done' : building ? 'building' : ''}>
                     <span className="part-dot" /><div><div className="part-label">{p.label}</div></div>
-                    <span className="part-state">{done ? '✓' : building ? '⚙' : ''}</span>
+                    <span className="part-state">{done ? '+' : building ? '·' : ''}</span>
                   </li>
                 )
               })}

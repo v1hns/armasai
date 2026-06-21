@@ -53,7 +53,7 @@ export default function LandingPage() {
       {/* Nav */}
       <nav className="lp-nav">
         <div className="lp-brand">
-          <span className="lp-logo">⬡</span>
+          <span className="lp-logo" />
           <span className="lp-wordmark">SUPERHUMAN</span>
         </div>
         <div className="lp-nav-links">
@@ -69,7 +69,7 @@ export default function LandingPage() {
         <header className="lp-hero">
           <div className="lp-hero-top">
             <h1 className="lp-title">
-              Prosthetics designed from how you <em>actually live.</em>
+              Prosthetics are never <em>one size fits all.</em>
             </h1>
             <div className="lp-hero-side">
               <div className="lp-kicker">// AI prosthetic design &amp; simulation</div>
@@ -138,7 +138,7 @@ export default function LandingPage() {
             {STAGES.map((s) => (
               <div className="lp-step" key={s.n}>
                 <div className="lp-step-n">// {s.n}</div>
-                <div className="lp-step-title"><span className="ic">{s.icon}</span>{s.title}</div>
+                <div className="lp-step-title">{s.title}</div>
                 <div className="lp-step-body">{s.body}</div>
                 <div className="lp-step-emit"><b>{s.a}</b> → <b>{s.b}</b></div>
               </div>
@@ -211,7 +211,7 @@ export default function LandingPage() {
 
       <footer className="lp-footer">
         <div className="lp-brand">
-          <span className="lp-logo">⬡</span>
+          <span className="lp-logo" />
           <span className="lp-wordmark">SUPERHUMAN</span>
         </div>
         <div className="lp-footer-note">Creation &amp; simulation pipeline for custom prosthetics.</div>
