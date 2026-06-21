@@ -41,7 +41,7 @@ const SAMPLE = {
   residual_anthropometrics: { upper_arm_len: 0.3, forearm_len: 0.26, hand_length: 0.19, grip_span: 0.08 },
   pain_points: [], source: 'sample',
 }
-const FALLBACK = { ...SAMPLE, primary_action: 'analysis unavailable — default sizing' }
+const FALLBACK = { ...SAMPLE, primary_action: 'default sizing (live vision offline)' }
 
 export default function DemoSingle() {
   const [status, setStatus] = useState({})
@@ -91,9 +91,15 @@ export default function DemoSingle() {
         return clip?.url
           ? 'Got a first-person clip. Everything below is worked out from this one video — no forms, no measurements.'
           : 'Waiting on a first-person clip of a daily task. It’s the only input; everything else is derived from it.'
-      case 'perception':
+      case 'perception': {
         if (!detection) return 'Watches the clip and figures out what the person is doing and which arm needs help.'
+        const src = detection.source
+        if (src && src !== 'gemini' && src !== 'sample')
+          return 'Live vision is offline on this host (no API key), so the demo runs on default sizing. With a key it reads the real action and affected arm straight from the clip.'
+        if (src === 'sample')
+          return 'Sample run — showing what perception produces. Upload a clip (or use the preloaded one) and it reads the real action and affected arm from the video.'
         return `Saw the person ${detection.primary_action}. The ${side(detection.affected_side)} arm is the one to replace — the ${side(detection.residual_side)} arm is doing the work and compensating.`
+      }
       case 'design':
         if (!design) return 'Turns the problem into real prosthetic measurements.'
         return `Designed an arm sized to match the person’s intact side: about ${(design.upper_arm_len * 100).toFixed(0)} cm upper arm, ${(design.forearm_len * 100).toFixed(0)} cm forearm, and ${design.dof} moving joints, mounted on the ${(design.mount_frame || '').includes('left') ? 'left' : 'right'}.`
