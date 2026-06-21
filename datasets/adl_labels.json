@@ -1,0 +1,34 @@
+{
+  "name": "armasai-adl-onehanded",
+  "description": "Egocentric ADL clips of a single left-hand-absent subject performing bimanual tasks one-handed. Ground-truth labels for the perception agent: the specific action, which side needs the prosthesis (affected), the compensating side (residual), and the ADL task categories the design should optimize.",
+  "subject": "single subject, left upper limb absent",
+  "label_schema": {
+    "file": "path to clip relative to repo root",
+    "primary_action": "specific human-written description of the main action",
+    "affected_side": "left | right — limb that needs the prosthesis",
+    "residual_side": "left | right — compensating limb",
+    "tasks": "subset of [reach, grasp, feeding] the action implies",
+    "bimanual_normally": "true if the task normally needs two hands",
+    "notes": "compensation strategy / context"
+  },
+  "videos": [
+    {
+      "file": "test_vids/IMG_9847 (1) (1).mov",
+      "primary_action": "opening a bottle cap one-handed, then picking up the bottle",
+      "affected_side": "left",
+      "residual_side": "right",
+      "tasks": ["grasp", "reach"],
+      "bimanual_normally": true,
+      "notes": "twisting a cap normally needs one hand to hold the bottle and the other to twist; done here single-handed, then the bottle is lifted off the surface"
+    },
+    {
+      "file": "test_vids/IMG_9848.MOV",
+      "primary_action": "tearing a piece of paper one-handed, bracing it against a window sill",
+      "affected_side": "left",
+      "residual_side": "right",
+      "tasks": ["grasp"],
+      "bimanual_normally": true,
+      "notes": "tearing paper normally needs two hands; here the sill substitutes for the missing hand to brace the sheet. Visually ambiguous (looks like wiping)."
+    }
+  ]
+}
