@@ -73,6 +73,15 @@ the other compensates. Read the functional situation from these sequential video
 - Name the SPECIFIC action: concrete object + precise verb (e.g. "unscrewing a bottle cap",
   "tearing a sheet of paper", "pouring water into a cup"). Do not default to any action.
 
+Reason through the action internally before answering:
+- What object is in the working hand, and what is the hand DOING to it
+  (twisting, tearing, folding, lifting, pouring, cutting)?
+- With ONE hand, the person BRACES objects against a surface (sill, table, lap, body) to
+  replace the missing hand. A hand pressing paper onto a sill is almost certainly TEARING or
+  FOLDING it, NOT wiping the surface. Report the intended task, not the incidental contact.
+- Estimate residual_anthropometrics (the intact arm, in meters) so the prosthesis can be sized
+  to MIRROR the contralateral limb; use the visible arm for scale or assume adult proportions.
+
 Respond with ONLY a JSON object of this exact shape:
 {
   "primary_action": "<specific object + verb>",
@@ -104,13 +113,16 @@ app.post('/api/analyze-frames', async (req, res) => {
   try {
     const parts = [
       { text: PERCEPTION_PROMPT },
-      ...frames.slice(0, 8).map((b64) => ({
+      // 12 frames is the action-recognition sweet spot (bench: 8 misses the key moment).
+      ...frames.slice(0, 12).map((b64) => ({
         inlineData: { mimeType: 'image/jpeg', data: b64.replace(/^data:[^,]+,/, '') },
       })),
     ]
     const result = await ai.models.generateContent({
       model: process.env.GEMMA_MODEL || 'gemini-2.5-flash',
       contents: [{ role: 'user', parts }],
+      // temperature=0 for reproducible reads (matches the Python pipeline).
+      config: { temperature: 0 },
     })
     const text = result.text ?? result.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? ''
     const detection = extractJson(text)
