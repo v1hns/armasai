@@ -117,8 +117,8 @@ class DesignOptimizationLoop:
         instruction = spec_layer.build(problem)
         cand_summaries = [
             {
-                "upper_m": round(sum(lk.length_m for lk in c.links if "upper" in lk.name), 3),
-                "fore_m":  round(sum(lk.length_m for lk in c.links if "fore" in lk.name), 3),
+                "upper_m": round(sum(lk.length for lk in c.links if "upper" in lk.name), 3),
+                "fore_m":  round(sum(lk.length for lk in c.links if "fore" in lk.name), 3),
                 "dof": c.dof,
                 "joints": c.joint_names,
             }
@@ -450,7 +450,7 @@ def _build_stats(
     if params is None:
         params = DesignParams()
 
-    reach_mm = int(sum(lk.length_m for lk in params.links) * 1000)
+    reach_mm = int(sum(lk.length for lk in params.links) * 1000)
 
     # Joint positions (cumulative along chain)
     joint_pos: dict[str, list] = {}
@@ -458,7 +458,7 @@ def _build_stats(
     for lk in params.links:
         for jd in lk.joints:
             joint_pos[jd.name] = [0.0, -round(offset * 1000, 1), 0.0]
-        offset += lk.length_m
+        offset += lk.length
 
     return {
         "material":           "PA12-CF",
