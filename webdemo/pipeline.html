@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ArmasAI — Pipeline Dashboard</title>
+    <style>
+      :root {
+        --panel: #0e1418;
+        --card: #161f27;
+        --line: #2a3742;
+        --fg: #dce6ee;
+        --dim: #8aa0b0;
+        --accent: #6fe6a0;
+        --warn: #f0c060;
+        --danger: #f06060;
+        --blue: #60b4f0;
+        --hdr: 52px;
+        --left: 260px;
+        --right: 320px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: var(--panel);
+        color: var(--fg);
+        font-family: -apple-system, Arial, sans-serif;
+        font-size: 13px;
+        overflow: hidden;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Header ── */
+      #hdr {
+        height: var(--hdr);
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        gap: 16px;
+        flex-shrink: 0;
+        z-index: 10;
+      }
+      #hdr .logo {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: var(--accent);
+      }
+      #hdr .logo span { color: var(--fg); }
+      #progress-bar {
+        flex: 1;
+        height: 6px;
+        background: var(--line);
+        border-radius: 4px;
+        overflow: hidden;
+        max-width: 340px;
+      }
+      #progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--accent), #4dc9e8);
+        transition: width 0.4s;
+        border-radius: 4px;
+      }
+      #status-label {
+        color: var(--dim);
+        font-size: 12px;
+        min-width: 160px;
+      }
+      #elapsed-label { color: var(--dim); font-size: 12px; }
+
+      /* ── Main 3-column layout ── */
+      #main {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      /* ── Left: clip picker ── */
+      #left {
+        width: var(--left);
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      #left h2 {
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding: 12px 14px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      #clip-grid {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .clip-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        transition: border-color 0.15s;
+        background: var(--card);
+      }
+      .clip-card:hover { border-color: var(--dim); }
+      .clip-card.selected { border-color: var(--accent); }
+      .clip-card img {
+        width: 100%;
+        height: 80px;
+        object-fit: cover;
+        display: block;
+        background: #1a2630;
+      }
+      .clip-card .clip-name {
+        padding: 5px 8px;
+        font-size: 11px;
+        color: var(--dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #left-actions {
+        padding: 10px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .btn {
+        width: 100%;
+        padding: 9px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--fg);
+        transition: all 0.15s;
+      }
+      .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0a1f14;
+        font-weight: 600;
+      }
+      .btn.primary:hover:not(:disabled) { background: #8ff0b8; }
+      .btn:disabled { opacity: 0.4; cursor: default; }
+      #quick-checkbox { font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+
+      /* ── Center: timeline ── */
+      #center {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      #center h2 {
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding: 12px 16px 8px;
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+      }
+      #timeline {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .stage-item {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        overflow: hidden;
+        transition: border-color 0.2s;
+      }
+      .stage-item.active { border-color: var(--accent); }
+      .stage-item.done { border-color: #2a4a35; }
+      .stage-item.error { border-color: var(--danger); }
+      .stage-header {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .stage-dot {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        border: 2px solid var(--line);
+        flex-shrink: 0;
+        transition: all 0.2s;
+      }
+      .stage-item.active .stage-dot {
+        border-color: var(--accent);
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent);
+        animation: pulse 1.2s infinite;
+      }
+      .stage-item.done .stage-dot {
+        border-color: var(--accent);
+        background: var(--accent);
+      }
+      .stage-item.error .stage-dot {
+        border-color: var(--danger);
+        background: var(--danger);
+      }
+      @keyframes pulse {
+        0%,100% { box-shadow: 0 0 6px var(--accent); }
+        50% { box-shadow: 0 0 14px var(--accent); }
+      }
+      .stage-label {
+        font-size: 13px;
+        font-weight: 600;
+        flex: 1;
+      }
+      .stage-elapsed {
+        color: var(--dim);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      .stage-chevron { color: var(--dim); font-size: 10px; }
+      .stage-body {
+        padding: 0 14px 12px;
+        border-top: 1px solid var(--line);
+        display: none;
+        animation: fadeIn 0.2s;
+      }
+      .stage-body.open { display: block; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+
+      /* Stage body content */
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        border-bottom: 1px solid #1c2a35;
+      }
+      .info-row:last-child { border-bottom: none; }
+      .info-row .key { color: var(--dim); }
+      .info-row .val { font-variant-numeric: tabular-nums; }
+      .badge {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 10px;
+        font-size: 11px;
+        background: #1a2d1e;
+        color: var(--accent);
+        border: 1px solid #2a4a35;
+      }
+      .badge.warn { background: #2d2710; color: var(--warn); border-color: #4a3c10; }
+      .candidate-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .candidate-table th {
+        color: var(--dim);
+        text-align: left;
+        padding: 3px 6px;
+        border-bottom: 1px solid var(--line);
+        font-weight: normal;
+      }
+      .candidate-table td {
+        padding: 4px 6px;
+        border-bottom: 1px solid #1c2a35;
+        font-variant-numeric: tabular-nums;
+      }
+      .candidate-table tr.best td { color: var(--accent); }
+      .bar-row { margin: 4px 0; }
+      .bar-label { color: var(--dim); font-size: 11px; margin-bottom: 2px; }
+      .bar-track {
+        height: 6px;
+        background: var(--line);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 3px;
+        transition: width 0.5s;
+      }
+      #rl-chart-canvas {
+        width: 100%;
+        height: 120px;
+        display: block;
+        margin-top: 8px;
+      }
+
+      /* ── Right: 3D viewer ── */
+      #right {
+        width: var(--right);
+        border-left: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      #right h2 {
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding: 12px 14px 8px;
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+      }
+      #viewer-wrap {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        min-height: 200px;
+      }
+      #viewer-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100% !important;
+        height: 100% !important;
+      }
+      #viewer-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--dim);
+        font-size: 12px;
+      }
+      #joint-panel {
+        border-top: 1px solid var(--line);
+        padding: 10px 12px;
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 160px;
+        overflow-y: auto;
+      }
+      #joint-panel h3 {
+        font-size: 11px;
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-bottom: 2px;
+      }
+      .joint-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+      }
+      .joint-row label { color: var(--dim); width: 90px; flex-shrink: 0; }
+      .joint-row input[type=range] { flex: 1; accent-color: var(--accent); }
+      .joint-val { color: var(--accent); width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+
+      /* ── Bottom stats ── */
+      #stats-bar {
+        height: 44px;
+        border-top: 1px solid var(--line);
+        background: var(--card);
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        gap: 24px;
+        overflow-x: auto;
+        flex-shrink: 0;
+      }
+      .stat {
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .stat .skey { color: var(--dim); font-size: 11px; }
+      .stat .sval { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--fg); }
+      .stat .sval.good { color: var(--accent); }
+      .stat .sval.warn { color: var(--warn); }
+    </style>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./node_modules/three/build/three.module.js",
+          "three/addons/": "./node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <!-- Header -->
+    <div id="hdr">
+      <div class="logo">Armas<span>AI</span></div>
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+      <div id="status-label">Select a clip and press Start</div>
+      <div id="elapsed-label"></div>
+    </div>
+
+    <!-- Main layout -->
+    <div id="main">
+
+      <!-- Left: clip picker -->
+      <div id="left">
+        <h2>Video Clips</h2>
+        <div id="clip-grid">
+          <div style="color:var(--dim);font-size:12px;padding:8px">Loading clips…</div>
+        </div>
+        <div id="left-actions">
+          <label id="quick-checkbox">
+            <input type="checkbox" id="quick-mode"> Quick mode (fewer seeds)
+          </label>
+          <button class="btn primary" id="start-btn" disabled>▶ Start Pipeline</button>
+          <button class="btn" id="stop-btn" disabled>■ Stop</button>
+        </div>
+      </div>
+
+      <!-- Center: timeline -->
+      <div id="center">
+        <h2>Pipeline Timeline</h2>
+        <div id="timeline">
+          <!-- Stage items injected by JS -->
+        </div>
+      </div>
+
+      <!-- Right: 3D viewer -->
+      <div id="right">
+        <h2>3D Arm Viewer</h2>
+        <div id="viewer-wrap">
+          <div id="viewer-loading">Loading MuJoCo WASM…</div>
+        </div>
+        <div id="joint-panel">
+          <h3>Joint Controls</h3>
+          <!-- joint sliders injected when pipeline done -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Stats bar -->
+    <div id="stats-bar">
+      <div class="stat"><span class="skey">Material</span><span class="sval" id="s-material">—</span></div>
+      <div class="stat"><span class="skey">Mass</span><span class="sval" id="s-mass">—</span></div>
+      <div class="stat"><span class="skey">Reach</span><span class="sval" id="s-reach">—</span></div>
+      <div class="stat"><span class="skey">DoF</span><span class="sval" id="s-dof">—</span></div>
+      <div class="stat"><span class="skey">IK success</span><span class="sval" id="s-ik">—</span></div>
+      <div class="stat"><span class="skey">RL success</span><span class="sval good" id="s-rl">—</span></div>
+      <div class="stat"><span class="skey">Lifespan</span><span class="sval" id="s-life">—</span></div>
+      <div class="stat"><span class="skey">Energy/task</span><span class="sval" id="s-energy">—</span></div>
+      <div class="stat"><span class="skey">Joints</span><span class="sval" id="s-joints">—</span></div>
+    </div>
+
+    <script type="module" src="./src/pipeline.js"></script>
+  </body>
+</html>
