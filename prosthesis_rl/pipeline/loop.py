@@ -299,7 +299,8 @@ class DesignOptimizationLoop:
         )
 
         rationale_text = design_agent.rationale_report(
-            [best_params], [best_eval] if best_eval else []
+            [best_params], [best_eval] if best_eval else [], 0, "Best design from optimization loop",
+            action=problem.primary_action,
         ) if best_eval else "No evaluation completed."
 
         emit.emit(PipelineEvent("stage_done", "final", {
