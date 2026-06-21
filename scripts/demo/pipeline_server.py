@@ -40,6 +40,31 @@ _active_loop: dict = {}
 VIDEO_EXTS = {".mov", ".mp4", ".avi", ".webm", ".MOV", ".MP4"}
 
 
+def _latest_scene() -> str | None:
+    """Name of the most recently written pipeline design the viewer can load.
+
+    A loadable design needs BOTH its slim viewer MJCF (assets/mjcf/<name>.xml,
+    written by cad.bridge.export_mjcf) and its per-link STLs
+    (assets/stl/<name>/*.stl, written by export_arm). We pick the pair whose STLs
+    were touched most recently — i.e. the latest thing the pipeline produced — so
+    the dashboard can auto-load it into the sim on page open.
+    """
+    if not ASSETS_STL.exists():
+        return None
+    best: str | None = None
+    best_mtime = -1.0
+    for d in ASSETS_STL.iterdir():
+        if not d.is_dir():
+            continue
+        stls = list(d.glob("*.stl"))
+        if not stls or not (ASSETS_MJCF / f"{d.name}.xml").exists():
+            continue
+        mtime = max(p.stat().st_mtime for p in stls)
+        if mtime > best_mtime:
+            best, best_mtime = d.name, mtime
+    return best
+
+
 def _list_clips() -> list[dict]:
     clips = []
     if TEST_VIDS.exists():
@@ -133,6 +158,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._respond(404, "text/plain", b"not found")
         elif path == "/api/status":
             self._json({"active": bool(_active_loop), "name": _active_loop.get("name", "")})
+        elif path == "/api/latest":
+            self._json({"name": _latest_scene()})
         else:
             self._respond(404, "text/plain", b"not found")
 
