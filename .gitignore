@@ -280,3 +280,6 @@ assets/policies/*.zip
 assets/renders/
 # durability dashboard sample data (scripts/demo/durability_dashboard.py)
 webdemo/assets/durability/report.json
+
+# Benji's personal ER photo — keep local, do NOT publish to public repo
+assets/pitch/benjihospital.jpg
