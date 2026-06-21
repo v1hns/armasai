@@ -36,6 +36,7 @@ Vihaan owns the runnable system path: task intake, contracts, HUD/eval gateway, 
 - **Orchestration:** wire task intake -> sim builder -> policy runner -> evaluator -> report.
 - **HUD integration:** maintain `tasks.py`, the gateway, and the command path that returns real eval metrics.
 - **Task intake:** convert clips, prompts, or ADL examples into validated `TaskSpec` records.
+- **API and provider access:** keep required provider keys, credits, and fallbacks usable for the sim demo, including HUD, Anthropic/Gemini-style model access, Modal or other compute, and RL-training providers when needed.
 - **Shared contracts:** maintain `TaskSpec`, `MorphologySpec`, `SimSpec`, `PolicyArtifact`, and `EvalResult`.
 - **Demo runtime:** make the viewer or local commands launch the sim and replay results cleanly.
 - **Integration discipline:** keep stubs runnable while real morphology, sim, and policy pieces replace them.
