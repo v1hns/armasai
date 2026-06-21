@@ -333,9 +333,7 @@ function streamPipelineEvents(child, res, onDone) {
 
 app.post('/api/design', async (req, res) => {
   const { message } = req.body
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
+  openSSE(res)
 
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -373,9 +371,7 @@ app.post('/api/design', async (req, res) => {
 
 app.post('/api/chat', async (req, res) => {
   const { message, history = [], params } = req.body
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
+  openSSE(res)
 
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -423,17 +419,8 @@ app.post('/api/chat', async (req, res) => {
 })
 
 // ── Multi-clip upload ─────────────────────────────────────────────────────────
-const uploadMulti = multer({
-  storage,
-  limits: { fileSize: 500 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const ok = /video\/(mp4|quicktime)/.test(file.mimetype) || /\.(mp4|mov)$/i.test(file.originalname)
-    cb(ok ? null : new Error('Only .mp4 / .mov files are accepted'), ok)
-  },
-})
-
 app.post('/api/upload-clips', (req, res) => {
-  uploadMulti.array('clips', 10)(req, res, (err) => {
+  upload.array('clips', 10)(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message })
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files received' })
     res.json({
