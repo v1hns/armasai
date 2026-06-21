@@ -63,7 +63,11 @@ Infer and report:
    {shoulder_flexion, elbow_flexion, wrist_rotation}.
 6. residual_strength: per-region 0..1 of the residual functioning limb.
 7. grip_capacity: a single 0..1 grip the prosthesis must deliver.
-8. pain_points: short observed difficulties the prosthesis should solve.
+8. residual_anthropometrics: estimate the intact (working) arm's measurements in
+   METERS so the prosthesis can be sized to MIRROR it — upper_arm_len,
+   forearm_len, hand_length, grip_span. Use the visible arm/hand for scale; if
+   not clearly visible, assume typical adult proportions.
+9. pain_points: short observed difficulties the prosthesis should solve.
 
 Decide primary_action, affected_side and residual_side ONLY from what the
 footage shows — affected/residual are opposite sides. Do not default to a side;
@@ -79,6 +83,7 @@ Respond with ONLY a JSON object, no prose, of this exact shape (the
   "rom": {"shoulder_flexion": 110.0, "elbow_flexion": 130.0, "wrist_rotation": 60.0},
   "residual_strength": {"shoulder": 0.7, "elbow": 0.6},
   "grip_capacity": 0.4,
+  "residual_anthropometrics": {"upper_arm_len": 0.30, "forearm_len": 0.26, "hand_length": 0.19, "grip_span": 0.08},
   "pain_points": ["one-handed compensation for bimanual tasks"]
 }
 """
@@ -93,6 +98,7 @@ _STUB_DETECTION: dict[str, Any] = {
     "rom": {"shoulder_flexion": 95.0, "elbow_flexion": 120.0, "wrist_rotation": 45.0},
     "residual_strength": {"shoulder": 0.7, "elbow": 0.6},
     "grip_capacity": 0.45,
+    "residual_anthropometrics": {"upper_arm_len": 0.30, "forearm_len": 0.26, "hand_length": 0.19, "grip_span": 0.08},
     "pain_points": ["one-handed compensation for bimanual daily tasks"],
     "source": "stub",
 }

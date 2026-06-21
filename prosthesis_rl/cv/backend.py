@@ -79,7 +79,23 @@ class PerceptionBackend:
             primary_action=str(detection.get("primary_action", "") or "").strip(),
             affected_side=affected_side,
             residual_side=residual_side,
+            residual_anthropometrics=self._clean_anthro(detection.get("residual_anthropometrics", {})),
         )
+
+    @staticmethod
+    def _clean_anthro(anthro: Any) -> dict[str, float]:
+        """Validate residual-arm measurements (meters), with adult-typical defaults."""
+        defaults = {"upper_arm_len": 0.30, "forearm_len": 0.26, "hand_length": 0.19, "grip_span": 0.08}
+        out = dict(defaults)
+        if isinstance(anthro, dict):
+            for key in defaults:
+                try:
+                    v = float(anthro[key])
+                    if 0.0 < v < 1.0:  # plausible adult segment length in meters
+                        out[key] = round(v, 4)
+                except (KeyError, TypeError, ValueError):
+                    continue
+        return out
 
     @staticmethod
     def _clean_side(side: Any, default: str) -> str:

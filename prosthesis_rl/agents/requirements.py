@@ -25,6 +25,9 @@ DEFAULT_MODEL = "gemini-2.5-flash"
 # design envelope toward what that action physically demands.
 _ACTION_PROFILES: dict[str, dict[str, Any]] = {
     "twist": {"wrist_rotation_deg": 90.0, "grip_width": 0.06, "grip_force_n": 18.0, "note": "cap/lid twisting needs strong pronation/supination + firm cylindrical grip"},
+    "screw": {"wrist_rotation_deg": 90.0, "grip_width": 0.06, "grip_force_n": 18.0, "note": "unscrewing a cap needs strong pronation/supination + firm cylindrical grip"},
+    "cap": {"wrist_rotation_deg": 90.0, "grip_width": 0.06, "grip_force_n": 18.0, "note": "cap removal needs pronation/supination + firm cylindrical grip"},
+    "lid": {"wrist_rotation_deg": 80.0, "grip_width": 0.07, "grip_force_n": 20.0, "note": "lid opening needs prying/twisting force + firm grip"},
     "tear": {"wrist_rotation_deg": 70.0, "grip_width": 0.05, "grip_force_n": 12.0, "note": "tearing needs a firm pinch and a braced second contact"},
     "fold": {"wrist_rotation_deg": 60.0, "grip_width": 0.07, "grip_force_n": 8.0, "note": "folding needs light, precise pinch and flat pressing"},
     "zip": {"wrist_rotation_deg": 50.0, "grip_width": 0.03, "grip_force_n": 10.0, "note": "zipping needs a fine pincer grip on a small pull"},
@@ -51,6 +54,8 @@ def problem_deliverables(spec: ProblemSpec) -> dict[str, Any]:
             "residual_strength": dict(spec.constraints.residual_strength),
             "grip_capacity": spec.constraints.grip_capacity,
         },
+        # Intact-arm measurements (m); the prosthesis mirrors these dimensions.
+        "residual_anthropometrics": dict(spec.residual_anthropometrics),
         "pain_points": pain_points,
     }
 
@@ -116,12 +121,15 @@ class RequirementsAgent:
             '  "task": {"primary_action": "...", "adl_category": "reach|grasp|feeding", "task_id": "..."},\n'
             '  "mount_side": "left|right",\n'
             '  "rom_targets_deg": {"shoulder_flexion": [lo,hi], "elbow_flexion": [lo,hi], "wrist_rotation": [lo,hi]},\n'
-            '  "design_params": {"upper_arm_len": 0.30, "forearm_len": 0.26, "grip_width": 0.06, "grip_force_target_n": 15.0, "joint_stiffness": 10.0},\n'
+            '  "design_params": {"upper_arm_len": 0.30, "forearm_len": 0.26, "hand_length": 0.19, "grip_width": 0.06, "grip_force_target_n": 15.0, "joint_stiffness": 10.0},\n'
             '  "actuator_torque_nm": {"shoulder_flexion": 20.0, "elbow_flexion": 15.0},\n'
             '  "rationale": "one sentence tying the specs to the action"\n'
             "}\n"
-            "Tune grip_width, grip_force, and wrist_rotation to what the specific "
-            "action physically demands."
+            "SIZING: set upper_arm_len, forearm_len, and hand_length to MIRROR the "
+            "intact arm in residual_anthropometrics (a prosthesis must match the "
+            "contralateral limb). Tune grip_force and wrist_rotation to what the "
+            "specific action physically demands; keep grip_width <= the intact "
+            "hand's grip_span."
         )
         if _use_vertex():
             client = genai.Client(http_options=HttpOptions(api_version="v1"))
@@ -154,6 +162,14 @@ class RequirementsAgent:
         wr = float(profile["wrist_rotation_deg"])
         tasks = deliverables.get("adl_tasks") or ["grasp_1_1"]
 
+        # Mirror lengths/width off the intact arm; the action sets grip force and
+        # caps the opening to what the task needs.
+        anthro = deliverables.get("residual_anthropometrics", {}) or {}
+        upper_len = float(anthro.get("upper_arm_len", 0.30))
+        forearm_len = float(anthro.get("forearm_len", 0.26))
+        hand_span = float(anthro.get("grip_span", 0.08))
+        grip_width = min(float(profile["grip_width"]), hand_span)
+
         brief = {
             "task": {
                 "primary_action": deliverables.get("primary_action", ""),
@@ -167,11 +183,13 @@ class RequirementsAgent:
                 "wrist_rotation": [-wr, wr],
             },
             "design_params": {
-                "upper_arm_len": 0.30,
-                "forearm_len": 0.26,
-                "grip_width": profile["grip_width"],
+                "upper_arm_len": round(upper_len, 4),
+                "forearm_len": round(forearm_len, 4),
+                "hand_length": round(float(anthro.get("hand_length", 0.19)), 4),
+                "grip_width": round(grip_width, 4),
                 "grip_force_target_n": profile["grip_force_n"],
                 "joint_stiffness": 10.0,
+                "sizing_basis": "mirrored from intact (residual) arm",
             },
             "actuator_torque_nm": {"shoulder_flexion": 20.0, "elbow_flexion": 15.0},
             "rationale": profile["note"],

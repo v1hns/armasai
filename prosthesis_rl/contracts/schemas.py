@@ -22,6 +22,10 @@ class ProblemSpec:
     primary_action: str = ""  # specific observed action, e.g. "drinking from a bottle"
     affected_side: str = ""  # "left" | "right" — limb that needs the prosthesis
     residual_side: str = ""  # "left" | "right" — compensating limb
+    # Anthropometrics of the intact (residual) arm, in meters — the prosthesis is
+    # sized to mirror the contralateral limb. Keys: upper_arm_len, forearm_len,
+    # hand_length, grip_span.
+    residual_anthropometrics: dict[str, float] = field(default_factory=dict)
 
 
 # ── Explicit kinematics ──────────────────────────────────────────────────────
