@@ -55,9 +55,7 @@ SHOWCASE_SCENE = (ROOT / "assets" / "scenes" / "gizmo" / "_drawer_cabinet"
 
 from prosthesis_rl.agents.scenario import ScenarioAgent, scene_prompt  # noqa: E402
 from prosthesis_rl.sim import gizmo_scene as gs                        # noqa: E402
-from prosthesis_rl.sim.gizmo_asset import inject_objects, waypoint_markers  # noqa: E402
-from prosthesis_rl.sim.gizmo_scene_merge import (                      # noqa: E402
-    inject_gizmo_scene, interactable_pos, spawn_site_pos)
+from prosthesis_rl.sim.gizmo_scene_merge import publish_merged_scene  # noqa: E402
 
 # Single-job state (the viewer shows one scene at a time). Guarded by _lock.
 _lock = threading.Lock()
@@ -75,43 +73,11 @@ def _snapshot() -> dict:
         return dict(_JOB)
 
 
-def _align_offset(scene_mjcf: Path, scenario) -> tuple[float, float, float]:
-    """Translate the scene so the task lines up with the arm (x/y only; floor kept).
-
-    Prefer Gizmo's `*Robot_Spawn` site (line it up under the arm's shoulder); if the
-    scene has none, line up the main interactable object with where the hand reaches
-    (the primary waypoint) so the arm sits at the task. Z is never shifted so the
-    scene stays on its floor."""
-    mx, my, _ = scenario.mount_pos
-    spawn = spawn_site_pos(scene_mjcf)
-    if spawn:
-        return (mx - spawn[0], my - spawn[1], 0.0)
-    anchor = interactable_pos(scene_mjcf)
-    if anchor:
-        px, py, _ = scenario.primary_waypoint().pos
-        return (px - anchor[0], py - anchor[1], 0.0)
-    return (0.0, 0.0, 0.0)
-
-
 def _publish(scene_mjcf: Path, scenario) -> None:
-    """Splice the arm, the task objects, and the A/B waypoint markers into the scene
-    and write the merged MJCF for the browser.
-
-    The Gizmo geometry is the environment; the scenario's own objects (e.g. the
-    phone + charger) are added as labelled props at the task points, and every
-    waypoint becomes a green marker so the point-A -> point-B task reads clearly.
-    """
-    arm_xml = ARM_XML.read_text()
-    offset = _align_offset(scene_mjcf, scenario)
-    merged = inject_gizmo_scene(arm_xml, scene_mjcf, offset=offset)
-    # The Gizmo scene already provides the task geometry (e.g. the cabinet/drawer);
-    # we just mark the A/B reach points so the task reads clearly.
-    merged = merged.replace(
-        "</worldbody>", waypoint_markers(scenario.waypoints) + "\n</worldbody>", 1)
-    LIVE.mkdir(parents=True, exist_ok=True)
-    tmp = PUBLISHED.with_suffix(".xml.tmp")
-    tmp.write_text(merged)
-    tmp.replace(PUBLISHED)  # atomic — the browser never reads a half-written file
+    """Publish the merged scene (arm + Gizmo environment + waypoint markers) for the
+    viewer, then write a scripted A->B trajectory so the static viewer shows motion.
+    The Gizmo geometry is the environment; the green markers show the task points."""
+    publish_merged_scene(ARM_XML, scene_mjcf, scenario, PUBLISHED)
     _write_trajectory(scenario)
 
 

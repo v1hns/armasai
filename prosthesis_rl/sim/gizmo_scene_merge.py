@@ -146,24 +146,41 @@ _STRUCTURAL = ("floor", "wall", "ceiling", "door", "window", "crown", "sill",
                "jamb", "header", "baseboard", "molding", "frame", "glass")
 
 
-def interactable_pos(scene_xml_path: str | Path) -> tuple[float, float, float] | None:
-    """World position of the scene's main task object (the thing to interact with).
+_MANIPULAND = ("handle", "knob", "drawer", "lid", "cap")  # the actual graspable part
 
-    Used to align a scene that has no robot-spawn site: prefer a body flagged
-    `interactable`/`articulation`, else the first non-structural top-level body
-    (skips floor/walls/ceiling/doors/windows). Returns None if only structure."""
+
+def interactable_pos(scene_xml_path: str | Path) -> tuple[float, float, float] | None:
+    """World position of the scene's graspable task part (for aligning the arm).
+
+    Walks the body tree accumulating world positions (a Gizmo cabinet's top-level
+    origin sits at its back-against-the-wall, so we must descend to the actual
+    drawer/handle sub-body). Prefers a manipuland (handle/drawer/...), else any
+    interactable/articulated body, else the first non-structural body. Returns None
+    if the scene is only structure (floor/walls/etc.)."""
     root = ET.parse(str(scene_xml_path)).getroot()
     wb = root.find("worldbody")
     if wb is None:
         return None
-    best = None
-    for b in wb.findall("body"):
-        n = (b.get("name") or "").lower()
-        if any(s in n for s in _STRUCTURAL):
-            continue
-        score = 2 if ("interactable" in n or "articulat" in n) else 1
-        if best is None or score > best[0]:
-            best = (score, tuple(_vec(b.get("pos", "0 0 0"))))
+    best: tuple[int, tuple[float, float, float]] | None = None
+
+    def walk(el, acc):
+        nonlocal best
+        for b in el.findall("body"):
+            p = _vec(b.get("pos", "0 0 0"))
+            wp = (acc[0] + p[0], acc[1] + p[1], acc[2] + p[2])
+            n = (b.get("name") or "").lower()
+            if not any(s in n for s in _STRUCTURAL):
+                if any(k in n for k in _MANIPULAND):
+                    score = 3
+                elif "interactable" in n or "articulat" in n:
+                    score = 2
+                else:
+                    score = 1
+                if best is None or score > best[0]:
+                    best = (score, wp)
+            walk(b, wp)
+
+    walk(wb, (0.0, 0.0, 0.0))
     return best[1] if best else None
 
 
@@ -178,6 +195,42 @@ def spawn_site_pos(scene_xml_path: str | Path) -> tuple[float, float, float] | N
         if "spawn" in (site.get("name") or "").lower():
             return tuple(_vec(site.get("pos", "0 0 0")))  # type: ignore[return-value]
     return None
+
+
+def align_offset(scene_xml_path: str | Path, scenario, *, front: float = 0.8
+                 ) -> tuple[float, float, float]:
+    """Translate offset that lines the scene's task up with the arm (x/y only).
+
+    Prefer Gizmo's `*Robot_Spawn` site (under the arm's shoulder); else put the main
+    graspable object `front` metres in front of the arm. Z is never shifted so the
+    scene stays on its floor. Shared by the live trainer and the scene viewer."""
+    mx, my, _ = scenario.mount_pos
+    spawn = spawn_site_pos(scene_xml_path)
+    if spawn:
+        return (mx - spawn[0], my - spawn[1], 0.0)
+    anchor = interactable_pos(scene_xml_path)
+    if anchor:
+        return (mx - anchor[0], (my + front) - anchor[1], 0.0)
+    return (0.0, 0.0, 0.0)
+
+
+def publish_merged_scene(arm_xml_path: str | Path, scene_xml_path: str | Path,
+                         scenario, out_path: str | Path, *, front: float = 0.8) -> Path:
+    """Write `out_path` = the web arm scene with the Gizmo scene + waypoint markers
+    merged in, aligned to the task. Atomic (tmp + rename) so a viewer polling the
+    file never reads a half-written scene. Used by both train_live.py (live PPO in
+    the scene) and scene_server.py (static scene viewer)."""
+    arm_xml = Path(arm_xml_path).read_text()
+    offset = align_offset(scene_xml_path, scenario, front=front)
+    merged = inject_gizmo_scene(arm_xml, scene_xml_path, offset=offset)
+    merged = merged.replace("</worldbody>",
+                            waypoint_markers(scenario.waypoints) + "\n</worldbody>", 1)
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp.write_text(merged)
+    tmp.replace(out)
+    return out
 
 
 def build_scenario_scene_xml(

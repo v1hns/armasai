@@ -82,6 +82,11 @@ def main() -> None:
     ap.add_argument("--fleet", type=int, default=0,
                     help="show a grid of N agents (one PPO policy, N randomized task "
                          'placements) in live.html, e.g. --fleet 36 --scenario "tie my shoe"')
+    ap.add_argument("--gizmo-scene",
+                    default=str(ROOT / "assets" / "scenes" / "gizmo" / "_drawer_cabinet"
+                                / "js7dv7ry4ttbm1ccx8nvsbjms9892893.xml"),
+                    help="render the arm training INSIDE this Gizmo scene MJCF (single-"
+                         "agent scenario mode). Set to '' to disable. Default: drawer cabinet.")
     args = ap.parse_args()
 
     import mujoco
@@ -152,8 +157,24 @@ def main() -> None:
             # Single agent: one task-target glow (no mid-air intermediate dots).
             ewp.write_web_scene(design, mesh_dir, target_pos, mount_pos=mount,
                                 objects=scenario.objects)
+            # Drop the arm into a Gizmo scene (the room/cabinet) for the viewer: the
+            # live policy still trains on the scenario waypoints, but the browser
+            # shows the arm inside the generated environment. The arm joints are
+            # listed first in the merged model, so the streamed trajectory drives the
+            # arm and the scene props stay at rest.
+            gizmo = Path(args.gizmo_scene) if args.gizmo_scene else None
+            if gizmo and gizmo.is_file():
+                from prosthesis_rl.sim.gizmo_scene_merge import publish_merged_scene
+                publish_merged_scene(
+                    WEBDEMO / "assets" / "scenes" / "arm_articulated.xml",
+                    gizmo, scenario, LIVE / "gizmo_scene.xml")
+                print(f"[live] arm training inside Gizmo scene {gizmo.name} "
+                      f"-> assets/live/gizmo_scene.xml", flush=True)
+            else:
+                (LIVE / "gizmo_scene.xml").unlink(missing_ok=True)  # plain scene
     else:
         target_pos = FIXED_TARGET
+        (LIVE / "gizmo_scene.xml").unlink(missing_ok=True)  # fixed reach: no Gizmo room
         if not (WEBDEMO / "assets" / "scenes" / "arm_articulated.xml").exists():
             ewp.write_web_scene(design, mesh_dir, FIXED_TARGET)  # geometry for the viewer
 

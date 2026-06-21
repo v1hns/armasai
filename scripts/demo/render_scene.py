@@ -80,9 +80,8 @@ def main() -> int:
     # camera: side-front view framing the arm + the task object
     renderer = mujoco.Renderer(model, height=720, width=1280)
     cam = mujoco.MjvCamera()
-    tgt = np.asarray(primary.pos)
-    cam.lookat[:] = 0.5 * np.asarray(scenario.mount_pos) + 0.5 * tgt + np.array([0, 0, 0.0])
-    cam.distance, cam.elevation, cam.azimuth = 2.2, -10, 120
+    cam.lookat[:] = np.asarray(scenario.mount_pos) + np.array([0, 0.4, -0.25])
+    cam.distance, cam.elevation, cam.azimuth = 2.6, -12, 90
 
     imgs = []
     for qf in qframes:
