@@ -43,12 +43,19 @@ const SAMPLE = {
 }
 const FALLBACK = { ...SAMPLE, primary_action: 'default sizing (live vision offline)' }
 
+// Preloaded sample clip so the pipeline (and the in-browser MuJoCo sim) runs out
+// of the box — a charger-plug ADL clip served from /public.
+const DEFAULT_CLIP = {
+  url: '/sample-charger.mp4', name: 'sample-charger.mp4',
+  sizeMB: '0.7', durationS: '6.5', preloaded: true,
+}
+
 export default function DemoSingle() {
   const [status, setStatus] = useState({})
   const [revealed, setRevealed] = useState(0)
   const [running, setRunning] = useState(false)
   const [active, setActive] = useState('capture')
-  const [clip, setClip] = useState(null)
+  const [clip, setClip] = useState(DEFAULT_CLIP)
   const [detection, setDetection] = useState(null)
   const [design, setDesign] = useState(null)
   const [evaluation, setEvaluation] = useState(null)
