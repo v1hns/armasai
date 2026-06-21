@@ -46,6 +46,18 @@ let trajIdx = 0;
 let playTraj = false;
 let interacting = false;
 
+// Live physics ("sim step") state. When simRunning, the loaded STL arm is driven
+// through a repeating reach by stepping MuJoCo (mj_step) under real dynamics —
+// not just kinematically posed. simDrive holds the per-actuator joint mapping +
+// neutral/reach targets computed from the model's joint ranges.
+let simRunning = false;
+let simDrive = null;
+let simWallMs = 0;
+let loadedSceneName = "default";
+const SIM_KP = 14.0; // PD stiffness  (desired joint torque per rad of error)
+const SIM_KV = 1.4; // PD damping
+const SIM_PERIOD_S = 4.0; // one full neutral→reach→neutral cycle
+
 // Three.js
 let renderer, scene, camera, controls, animId;
 
@@ -583,6 +595,10 @@ function startPipeline() {
   _rlRewards.length = 0;
   trajectory = [];
   playTraj = false;
+  // Hand the viewer to the run: per-stage sim_frame qpos and the final trajectory
+  // drive it now. The CAD stage will hot-swap in each candidate's STL, and once
+  // the run finishes the user can re-arm the live physics from the sim controls.
+  setSimRunning(false);
   document.getElementById("joint-panel").style.display = "none";
 
   document.getElementById("start-btn").disabled = true;
@@ -720,19 +736,23 @@ async function initViewer() {
     resizeViewer();
 
     document.getElementById("viewer-loading").style.display = "none";
+    buildSimControls();
 
-    // Load default arm scene
-    await loadViewerScene("default");
+    // Auto-load the latest STL arm the pipeline produced (falls back to the
+    // bundled default), then run live physics on it so it animates immediately.
+    const gotLatest = await loadLatestScene();
+    if (!gotLatest) await loadViewerScene("default");
+    setSimRunning(true);
 
     // Start render loop
-    function renderLoop() {
+    function renderLoop(timeMS) {
       animId = requestAnimationFrame(renderLoop);
       if (playTraj && trajectory.length) {
         const frame = trajectory[Math.floor(trajIdx) % trajectory.length];
         if (frame && frame.qpos) updateViewerQpos(frame.qpos);
         trajIdx += 0.5;
-      } else if (currentQpos && mjModel && mjData) {
-        // Hold last received qpos
+      } else if (simRunning && mjModel && mjData) {
+        stepSimPhysics(timeMS || 0); // step MuJoCo so the STL arm moves
       }
       if (mjModel && mjData) {
         updateBodies();
@@ -809,7 +829,28 @@ async function loadViewerScene(name) {
     mujoco.mj_forward(mjModel, mjData);
 
     bodies = buildViewerBodies(mjModel);
+
+    // Rebuild the physics drive table for this design and reset the sim clock so
+    // the reach animation restarts cleanly on the freshly loaded arm.
+    loadedSceneName = name;
+    setupSimDrive(mjModel);
+    updateSimLabel();
   } catch {}
+}
+
+// Ask the server for the most recent pipeline-output design and load it. Returns
+// true if a real latest scene was loaded, false if there is nothing to load yet.
+async function loadLatestScene() {
+  try {
+    const r = await fetch("/api/latest");
+    if (!r.ok) return false;
+    const { name } = await r.json();
+    if (!name) return false;
+    await loadViewerScene(name);
+    return !!mjModel;
+  } catch {
+    return false;
+  }
 }
 
 function buildViewerBodies(model) {
@@ -924,6 +965,113 @@ function updateBodies() {
     );
     bodies[b].updateWorldMatrix();
   }
+}
+
+// ── Live physics "sim step" ────────────────────────────────────────────────────
+// Build the per-actuator drive table from the freshly compiled model: which qpos/
+// qvel slot each actuator moves, its gear, and a neutral + reach target taken from
+// the joint's compiled range. The reach pose pushes every joint ~58% toward its
+// upper limit, which reads as a coordinated forward/down reach for the arm chain.
+function setupSimDrive(model) {
+  const nu = model.nu | 0;
+  if (!nu) {
+    simDrive = null;
+    return;
+  }
+  const aQadr = new Int32Array(nu),
+    aDadr = new Int32Array(nu),
+    aGear = new Float64Array(nu),
+    neutral = new Float64Array(nu),
+    reach = new Float64Array(nu);
+  for (let a = 0; a < nu; a++) {
+    const j = model.actuator_trnid[a * 2]; // joint this actuator transmits to
+    aQadr[a] = model.jnt_qposadr[j];
+    aDadr[a] = model.jnt_dofadr[j];
+    aGear[a] = model.actuator_gear[a * 6]; // first gear component (joint torque)
+    const lo = model.jnt_range[j * 2],
+      hi = model.jnt_range[j * 2 + 1];
+    const clamp = (x) => Math.min(hi, Math.max(lo, x));
+    neutral[a] = clamp(0.0); // rest at ~0, snapped into range
+    reach[a] = lo + 0.58 * (hi - lo); // reach end pose
+  }
+  simDrive = { aQadr, aDadr, aGear, neutral, reach };
+  simWallMs = 0; // force a clock resync on the next step
+}
+
+// Gravity-compensated PD: feed mj_step a control that cancels gravity/coriolis
+// (qfrc_bias) and tracks the interpolated reach target. This makes the STL arm
+// move under the real integrator without sagging or blowing up, for any design.
+function driveReach() {
+  if (!simDrive) return;
+  const t = mjData.time;
+  const s = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / SIM_PERIOD_S); // 0→1→0 ease
+  const { aQadr, aDadr, aGear, neutral, reach } = simDrive;
+  for (let a = 0; a < aQadr.length; a++) {
+    const tgt = neutral[a] + (reach[a] - neutral[a]) * s;
+    const q = mjData.qpos[aQadr[a]];
+    const v = mjData.qvel[aDadr[a]];
+    const bias = mjData.qfrc_bias[aDadr[a]] || 0;
+    const tau = bias + SIM_KP * (tgt - q) - SIM_KV * v;
+    const g = aGear[a];
+    mjData.ctrl[a] = Math.abs(g) > 1e-9 ? tau / g : tau;
+  }
+}
+
+// Step physics forward to catch up with wall-clock time (fixed timestep, capped
+// substeps so a slow/blurred frame can't spiral). Mirrors webdemo/src/main.js.
+function stepSimPhysics(timeMS) {
+  if (!mjModel || !mjData) return;
+  const dt = mjModel.opt.timestep || 0.002;
+  if (!simWallMs || timeMS - simWallMs > 200) simWallMs = timeMS - dt * 1000;
+  let guard = 0;
+  while (simWallMs < timeMS && guard++ < 80) {
+    driveReach();
+    mujoco.mj_step(mjModel, mjData);
+    simWallMs += dt * 1000;
+  }
+}
+
+function resetSim() {
+  if (!mjModel || !mjData) return;
+  mujoco.mj_resetData(mjModel, mjData);
+  mujoco.mj_forward(mjModel, mjData);
+  simWallMs = 0;
+}
+
+function setSimRunning(on) {
+  simRunning = !!on;
+  if (simRunning) {
+    playTraj = false; // physics drive and recorded playback are mutually exclusive
+    simWallMs = 0;
+  }
+  const btn = document.getElementById("sim-toggle");
+  if (btn) btn.textContent = simRunning ? "⏸ Pause sim" : "▶ Run sim";
+}
+
+function updateSimLabel() {
+  const el = document.getElementById("sim-name");
+  if (el) el.textContent = loadedSceneName;
+}
+
+// Small control overlay on the viewer: which design is loaded + run/pause/reset.
+function buildSimControls() {
+  const wrap = document.getElementById("viewer-wrap");
+  if (!wrap || document.getElementById("sim-controls")) return;
+  const bar = document.createElement("div");
+  bar.id = "sim-controls";
+  bar.style.cssText =
+    "position:absolute;left:8px;top:8px;z-index:5;display:flex;gap:6px;" +
+    "align-items:center;background:rgba(14,20,24,0.78);border:1px solid #2a3742;" +
+    "border-radius:8px;padding:5px 8px;font-size:11px;color:#8aa0b0;backdrop-filter:blur(3px)";
+  bar.innerHTML = `
+    <span>Sim: <b id="sim-name" style="color:#6fe6a0;font-weight:600">—</b></span>
+    <button id="sim-toggle" style="cursor:pointer;border:1px solid #2a3742;background:#161f27;color:#dce6ee;border-radius:6px;padding:3px 8px;font-size:11px">▶ Run sim</button>
+    <button id="sim-reset" style="cursor:pointer;border:1px solid #2a3742;background:#161f27;color:#dce6ee;border-radius:6px;padding:3px 8px;font-size:11px">↺ Reset</button>`;
+  wrap.appendChild(bar);
+  bar
+    .querySelector("#sim-toggle")
+    .addEventListener("click", () => setSimRunning(!simRunning));
+  bar.querySelector("#sim-reset").addEventListener("click", resetSim);
 }
 
 // ── Joint panel (post-pipeline manual control) ─────────────────────────────────
